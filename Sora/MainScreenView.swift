@@ -6,13 +6,35 @@
 //
 
 import SwiftUI
+import AVKit
+import AVFoundation
+
+// Обёртка для показа изображения или видео в fullScreenCover(item:)
+struct IdentifiableMedia: Identifiable {
+    let id = UUID()
+    let image: UIImage?
+    let videoURL: URL?
+    
+    init(image: UIImage? = nil, videoURL: URL? = nil) {
+        self.image = image
+        self.videoURL = videoURL
+    }
+}
 
 // Модель сообщения
 struct Message: Identifiable {
     let id = UUID()
     let text: String
     let image: UIImage?
+    let videoURL: URL?
     var isIncoming: Bool // true = входящее (от Sora), false = исходящее (от пользователя)
+    
+    init(text: String, image: UIImage? = nil, videoURL: URL? = nil, isIncoming: Bool) {
+        self.text = text
+        self.image = image
+        self.videoURL = videoURL
+        self.isIncoming = isIncoming
+    }
 }
 
 // Компонент для отображения исходящего сообщения
@@ -21,7 +43,9 @@ struct MessageView: View {
     let maxWidth: CGFloat
     let onCopy: () -> Void
     let onDelete: () -> Void
-    let onImageTap: (() -> Void)? = nil
+    let onMediaTap: (() -> Void)?
+    
+    private var hasMedia: Bool { message.image != nil || message.videoURL != nil }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -35,25 +59,30 @@ struct MessageView: View {
                     .cornerRadius(25)
                     .padding(.top, 25)
                     .padding(.horizontal, 25)
-                    .onTapGesture {
-                        onImageTap?()
-                    }
+                    .onTapGesture { onMediaTap?() }
+            }
+            // Превью видео (если есть)
+            else if let videoURL = message.videoURL {
+                VideoPreviewView(url: videoURL)
+                    .padding(.top, 25)
+                    .padding(.horizontal, 25)
+                    .onTapGesture { onMediaTap?() }
             }
             
-            // Текст ниже фото
+            // Текст ниже фото/видео
             if !message.text.isEmpty {
                 Text(message.text)
                     .font(.system(size: 17, weight: .regular))
                     .foregroundColor(.white)
-                    .padding(.horizontal, message.image != nil ? 25 : 16)
-                    .padding(.vertical, message.image != nil ? 12 : 16)
-                    .frame(maxWidth: message.image != nil ? .infinity : nil, alignment: .leading)
-                    .fixedSize(horizontal: message.image == nil, vertical: false)
+                    .padding(.horizontal, hasMedia ? 25 : 16)
+                    .padding(.vertical, hasMedia ? 12 : 16)
+                    .frame(maxWidth: hasMedia ? .infinity : nil, alignment: .leading)
+                    .fixedSize(horizontal: !hasMedia, vertical: false)
             }
             
             // HStack с кнопками внизу
             HStack(spacing: 5) {
-                if message.image == nil {
+                if !hasMedia {
                     Spacer(minLength: 0)
                 } else {
                     Spacer()
@@ -79,13 +108,13 @@ struct MessageView: View {
             }
             .padding(.trailing, 20)
             .padding(.bottom, 20)
-            .padding(.top, (message.text.isEmpty && message.image != nil) ? 12 : 0)
-            .padding(.leading, message.image == nil ? 16 : 0)
+            .padding(.top, (message.text.isEmpty && hasMedia) ? 12 : 0)
+            .padding(.leading, !hasMedia ? 16 : 0)
         }
         .background(Color(hex: "#1F2023"))
         .cornerRadius(40)
-        .frame(maxWidth: message.image != nil ? maxWidth : nil)
-        .fixedSize(horizontal: message.image == nil, vertical: false)
+        .frame(maxWidth: hasMedia ? maxWidth : nil)
+        .fixedSize(horizontal: !hasMedia, vertical: false)
         .frame(maxWidth: maxWidth, alignment: .trailing)
     }
 }
@@ -98,7 +127,9 @@ struct IncomingMessageView: View {
     let onDownload: () -> Void
     let onShare: () -> Void
     let onRefresh: () -> Void
-    let onImageTap: (() -> Void)? = nil
+    let onMediaTap: (() -> Void)?
+    
+    private var hasMedia: Bool { message.image != nil || message.videoURL != nil }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -112,25 +143,30 @@ struct IncomingMessageView: View {
                     .cornerRadius(25)
                     .padding(.top, 25)
                     .padding(.horizontal, 25)
-                    .onTapGesture {
-                        onImageTap?()
-                    }
+                    .onTapGesture { onMediaTap?() }
+            }
+            // Превью видео (если есть)
+            else if let videoURL = message.videoURL {
+                VideoPreviewView(url: videoURL)
+                    .padding(.top, 25)
+                    .padding(.horizontal, 25)
+                    .onTapGesture { onMediaTap?() }
             }
             
-            // Текст ниже фото
+            // Текст ниже фото/видео
             if !message.text.isEmpty {
                 Text(message.text)
                     .font(.system(size: 17, weight: .regular))
                     .foregroundColor(.white)
-                    .padding(.horizontal, message.image != nil ? 25 : 16)
-                    .padding(.vertical, message.image != nil ? 12 : 16)
-                    .frame(maxWidth: message.image != nil ? .infinity : nil, alignment: .leading)
-                    .fixedSize(horizontal: message.image == nil, vertical: false)
+                    .padding(.horizontal, hasMedia ? 25 : 16)
+                    .padding(.vertical, hasMedia ? 12 : 16)
+                    .frame(maxWidth: hasMedia ? .infinity : nil, alignment: .leading)
+                    .fixedSize(horizontal: !hasMedia, vertical: false)
             }
             
             // HStack с кнопками внизу
             HStack(spacing: 5) {
-                if message.image == nil {
+                if !hasMedia {
                     Spacer(minLength: 0)
                 } else {
                     Spacer()
@@ -177,13 +213,13 @@ struct IncomingMessageView: View {
             }
             .padding(.trailing, 20)
             .padding(.bottom, 20)
-            .padding(.top, (message.text.isEmpty && message.image != nil) ? 12 : 0)
-            .padding(.leading, message.image == nil ? 16 : 0)
+            .padding(.top, (message.text.isEmpty && hasMedia) ? 12 : 0)
+            .padding(.leading, !hasMedia ? 16 : 0)
         }
         .background(Color(hex: "#1F2023"))
         .cornerRadius(40)
-        .frame(maxWidth: message.image != nil ? maxWidth : nil)
-        .fixedSize(horizontal: message.image == nil, vertical: false)
+        .frame(maxWidth: hasMedia ? maxWidth : nil)
+        .fixedSize(horizontal: !hasMedia, vertical: false)
         .frame(maxWidth: maxWidth, alignment: .leading)
     }
 }
@@ -222,8 +258,7 @@ struct MainScreenView: View {
     @State private var showStyleSheet = false
     @State private var selectedStyle: Int? = nil
     @State private var selectedStyleName: String? = nil // Сохраняем название выбранного стиля
-    @State private var showImageViewer = false
-    @State private var imageToView: UIImage? = nil
+    @State private var imageToView: IdentifiableMedia? = nil
     
     var body: some View {
         ZStack {
@@ -398,7 +433,6 @@ struct MainScreenView: View {
                 messages: messages,
                 isLoadingResponse: isLoadingResponse,
                 imageToView: $imageToView,
-                showImageViewer: $showImageViewer,
                 onDeleteMessage: { id in
                     messages.removeAll { $0.id == id }
                 },
@@ -427,9 +461,9 @@ struct MainScreenView: View {
             .presentationDetents([.fraction(0.65)])
             .presentationDragIndicator(.visible)
         }
-        .fullScreenCover(isPresented: $showImageViewer) {
-            if let image = imageToView {
-                ImageViewer(image: image)
+        .fullScreenCover(item: $imageToView) { item in
+            ImageViewer(media: item) {
+                imageToView = nil
             }
         }
         .onChange(of: selectedImage) { newImage in
@@ -589,6 +623,7 @@ struct MainScreenView: View {
                                 let newMessage = Message(
                                     text: messageText,
                                     image: messageImage,
+                                    videoURL: nil,
                                     isIncoming: false
                                 )
                                 messages.append(newMessage)
@@ -605,10 +640,12 @@ struct MainScreenView: View {
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                                     isLoadingResponse = false
                                     
-                                    // Создаем входящее сообщение
+                                    // Создаем входящее сообщение (фото или видео в зависимости от режима)
+                                    let isVideoMode = photoVideoSelection == 1
                                     let incomingMessage = Message(
                                         text: "Mock output image",
-                                        image: UIImage(named: "fiveScreen"),
+                                        image: isVideoMode ? nil : UIImage(named: "fiveScreen"),
+                                        videoURL: isVideoMode ? Bundle.main.url(forResource: "20phone", withExtension: "mp4") : nil,
                                         isIncoming: true
                                     )
                                     messages.append(incomingMessage)
@@ -636,16 +673,15 @@ struct MainScreenView: View {
 struct MessagesListView: View {
     let messages: [Message]
     let isLoadingResponse: Bool
-    @Binding var imageToView: UIImage?
-    @Binding var showImageViewer: Bool
+    @Binding var imageToView: IdentifiableMedia?
     let onDeleteMessage: (UUID) -> Void
     let geometry: GeometryProxy
     
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 12) {
-                ForEach(messages) { message in
-                    if message.isIncoming {
+                ForEach(messages, id: \.id) { (message: Message) in
+                    if message.isIncoming == true {
                                     // Входящее сообщение (слева)
                                     HStack {
                                         IncomingMessageView(
@@ -667,10 +703,11 @@ struct MessagesListView: View {
                                                 // Обновить
                                                 // TODO: Реализовать обновление
                                             },
-                                            onImageTap: {
+                                            onMediaTap: {
                                                 if let image = message.image {
-                                                    imageToView = image
-                                                    showImageViewer = true
+                                                    imageToView = IdentifiableMedia(image: image)
+                                                } else if let url = message.videoURL {
+                                                    imageToView = IdentifiableMedia(videoURL: url)
                                                 }
                                             }
                                         )
@@ -692,10 +729,11 @@ struct MessagesListView: View {
                                                 // Удаление сообщения
                                                 onDeleteMessage(message.id)
                                             },
-                                            onImageTap: {
+                                            onMediaTap: {
                                                 if let image = message.image {
-                                                    imageToView = image
-                                                    showImageViewer = true
+                                                    imageToView = IdentifiableMedia(image: image)
+                                                } else if let url = message.videoURL {
+                                                    imageToView = IdentifiableMedia(videoURL: url)
                                                 }
                                             }
                                         )
@@ -905,14 +943,60 @@ struct StyleCard: View {
     }
 }
 
-// Экран просмотра фото
-struct ImageViewer: View {
-    let image: UIImage
-    @Environment(\.dismiss) var dismiss
+// Превью видео в сообщении (первый кадр + иконка play)
+struct VideoPreviewView: View {
+    let url: URL
+    @State private var thumbnail: UIImage?
     
     var body: some View {
         ZStack {
-            // Фоновое изображение
+            if let thumbnail = thumbnail {
+                Image(uiImage: thumbnail)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 120)
+                    .clipped()
+                    .cornerRadius(25)
+            } else {
+                Rectangle()
+                    .fill(Color(hex: "#2A2A2A"))
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 120)
+                    .cornerRadius(25)
+            }
+            Image(systemName: "play.circle.fill")
+                .font(.system(size: 48))
+                .foregroundColor(.white.opacity(0.9))
+        }
+        .onAppear {
+            loadThumbnail()
+        }
+    }
+    
+    private func loadThumbnail() {
+        let asset = AVAsset(url: url)
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.generateCGImagesAsynchronously(forTimes: [NSValue(time: .zero)]) { _, cgImage, _, _, _ in
+            if let cgImage = cgImage {
+                DispatchQueue.main.async {
+                    thumbnail = UIImage(cgImage: cgImage)
+                }
+            }
+        }
+    }
+}
+
+// Экран просмотра фото или видео
+struct ImageViewer: View {
+    let media: IdentifiableMedia
+    var onDismiss: (() -> Void)? = nil
+    @Environment(\.dismiss) var dismiss
+    @State private var showShareSheet = false
+    
+    var body: some View {
+        ZStack {
             Image("phone")
                 .resizable()
                 .scaledToFill()
@@ -921,8 +1005,8 @@ struct ImageViewer: View {
             VStack(spacing: 0) {
                 // Навбар
                 HStack {
-                    // Кнопка назад
                     Button(action: {
+                        onDismiss?()
                         dismiss()
                     }) {
                         Image("chevronLeft")
@@ -932,20 +1016,14 @@ struct ImageViewer: View {
                             .foregroundColor(.white)
                             .frame(width: 48, height: 48)
                     }
-                    
+                    .background(Color(hex: "#1F2023"))
+                    .cornerRadius(20)
                     Spacer()
-                    
-                    // Тайтл
                     Text("Result")
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundColor(.white)
-                    
                     Spacer()
-                    
-                    // Кнопка threeDots
-                    Button(action: {
-                        // Пока без действия
-                    }) {
+                    Button(action: {}) {
                         Image("threeDots")
                             .resizable()
                             .scaledToFit()
@@ -953,22 +1031,29 @@ struct ImageViewer: View {
                             .foregroundColor(.white)
                             .frame(width: 48, height: 48)
                     }
+                    .background(Color(hex: "#1F2023"))
+                    .cornerRadius(20)
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, 40)
                 .padding(.top, 8)
                 
-                // Контент
+                // Контент: картинка или видеоплеер
                 VStack(spacing: 0) {
-                    // Картинка
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFit()
-                        .padding(.top, 40)
-                        .padding(.horizontal, 20)
+                    if let image = media.image {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFit()
+                            .padding(.top, 40)
+                            .padding(.horizontal, 20)
+                    } else if let videoURL = media.videoURL {
+                        VideoPlayer(player: AVPlayer(url: videoURL))
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 40)
+                            .padding(.horizontal, 20)
+                    }
                     
-                    // Кнопка Share
                     Button(action: {
-                        // TODO: Реализовать шаринг
+                        showShareSheet = true
                     }) {
                         Text("Share")
                             .font(.system(size: 17, weight: .regular))
@@ -994,7 +1079,31 @@ struct ImageViewer: View {
                 }
             }
         }
+        .sheet(isPresented: $showShareSheet) {
+            ShareSheet(items: shareItems)
+        }
     }
+    
+    private var shareItems: [Any] {
+        if let image = media.image {
+            return [image]
+        }
+        if let url = media.videoURL {
+            return [url]
+        }
+        return []
+    }
+}
+
+// Системный share sheet
+struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+    
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+    
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 #Preview {
