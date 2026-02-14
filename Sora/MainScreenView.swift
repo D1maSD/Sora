@@ -21,6 +21,22 @@ struct IdentifiableMedia: Identifiable {
     }
 }
 
+// Модель чата для History
+struct Chat: Identifiable {
+    let id: UUID
+    var messages: [Message]
+    
+    /// Первое предложение первого сообщения (для тайтла ячейки)
+    var title: String {
+        guard let first = messages.first(where: { !$0.text.isEmpty }) else { return "New chat" }
+        let trimmed = first.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let end = trimmed.firstIndex(of: ".") ?? trimmed.firstIndex(of: "!") ?? trimmed.firstIndex(of: "?") {
+            return String(trimmed[..<end]).trimmingCharacters(in: .whitespaces)
+        }
+        return trimmed.isEmpty ? "New chat" : String(trimmed.prefix(50))
+    }
+}
+
 // Модель сообщения
 struct Message: Identifiable {
     let id = UUID()
@@ -246,6 +262,11 @@ struct RoundedCorner: Shape {
 }
 
 struct MainScreenView: View {
+    @Binding var messages: [Message]
+    var onOpenHistory: (() -> Void)? = nil
+    var onFirstMessageSent: (() -> Void)? = nil
+    var onDeleteChat: (() -> Void)? = nil
+    
     @State private var chatEffectsSelection = 0 // 0 = chat, 1 = effects
     @State private var photoVideoSelection = 0 // 0 = photo, 1 = video
     @State private var textFieldText = ""
@@ -253,12 +274,12 @@ struct MainScreenView: View {
     @State private var selectedImage: UIImage? = nil
     @State private var imageFileName: String = ""
     @State private var isLoadingImage: Bool = false
-    @State private var messages: [Message] = []
     @State private var isLoadingResponse: Bool = false
     @State private var showStyleSheet = false
     @State private var selectedStyle: Int? = nil
     @State private var selectedStyleName: String? = nil // Сохраняем название выбранного стиля
     @State private var imageToView: IdentifiableMedia? = nil
+    @State private var showDeleteChatAlert = false
     
     var body: some View {
         ZStack {
@@ -272,6 +293,21 @@ struct MainScreenView: View {
                 topSection
                 messagesSection
                 bottomSection
+            }
+        }
+        .overlay {
+            if showDeleteChatAlert {
+                DeleteChatAlertView(
+                    onCancel: { showDeleteChatAlert = false },
+                    onDelete: {
+                        showDeleteChatAlert = false
+                        if let onDelete = onDeleteChat {
+                            onDelete()
+                        } else {
+                            messages.removeAll()
+                        }
+                    }
+                )
             }
         }
     }
@@ -387,7 +423,9 @@ struct MainScreenView: View {
                 
                 // Кнопки: plus, clockArrow, trash
                 
-                Button(action: {}) {
+                Button(action: {
+                    showDeleteChatAlert = true
+                }) {
                     Image("trash")
                         .resizable()
                         .scaledToFit()
@@ -397,7 +435,9 @@ struct MainScreenView: View {
                 .frame(width: buttonWidth, height: 51)
                 .background(Color(hex: "#1F2023"))
                 .cornerRadius(12)
-                Button(action: {}) {
+                Button(action: {
+                    onOpenHistory?()
+                }) {
                     Image("clockArrow")
                         .resizable()
                         .scaledToFit()
@@ -434,7 +474,7 @@ struct MainScreenView: View {
                 isLoadingResponse: isLoadingResponse,
                 imageToView: $imageToView,
                 onDeleteMessage: { id in
-                    messages.removeAll { $0.id == id }
+                    messages = messages.filter { $0.id != id }
                 },
                 geometry: geometry
             )
@@ -626,7 +666,9 @@ struct MainScreenView: View {
                                     videoURL: nil,
                                     isIncoming: false
                                 )
-                                messages.append(newMessage)
+                                let wasEmpty = messages.isEmpty
+                                messages = messages + [newMessage]
+                                if wasEmpty { onFirstMessageSent?() }
                                 
                                 // Очистка полей
                                 textFieldText = ""
@@ -648,7 +690,7 @@ struct MainScreenView: View {
                                         videoURL: isVideoMode ? Bundle.main.url(forResource: "20phone", withExtension: "mp4") : nil,
                                         isIncoming: true
                                     )
-                                    messages.append(incomingMessage)
+                                    messages = messages + [incomingMessage]
                                 }
                             }) {
                                 Image("top_arrow")
@@ -1106,6 +1148,50 @@ struct ShareSheet: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
+// Кастомный алерт удаления чата (фон #232323)
+struct DeleteChatAlertView: View {
+    let onCancel: () -> Void
+    let onDelete: () -> Void
+    
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.5)
+                .ignoresSafeArea()
+                .onTapGesture(perform: onCancel)
+            
+            VStack(spacing: 20) {
+                Text("Delete chat?")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundColor(.white)
+                
+                Text("This history will be permanently removed.")
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                
+                HStack(spacing: 16) {
+                    Button("Cancel") {
+                        onCancel()
+                    }
+                    .font(.system(size: 17, weight: .regular))
+                    .foregroundColor(Color(hex: "#6CABE9"))
+                    
+                    Button("Delete") {
+                        onDelete()
+                    }
+                    .font(.system(size: 17, weight: .regular))
+                    .foregroundColor(.red)
+                }
+                .padding(.top, 8)
+            }
+            .padding(24)
+            .frame(maxWidth: 280)
+            .background(Color(hex: "#232323"))
+            .cornerRadius(14)
+        }
+    }
+}
+
 #Preview {
-    MainScreenView()
+    MainScreenView(messages: .constant([]))
 }
