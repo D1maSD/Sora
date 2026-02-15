@@ -294,6 +294,7 @@ struct MainScreenView: View {
     @State private var selectedStyleName: String? = nil // Сохраняем название выбранного стиля
     @State private var imageToView: IdentifiableMedia? = nil
     @State private var showDeleteChatAlert = false
+    @State private var scrollBannerId: Int? = 0
     
     var body: some View {
         ZStack {
@@ -305,8 +306,12 @@ struct MainScreenView: View {
             
             VStack(spacing: 0) {
                 topSection
-                messagesSection
-                bottomSection
+                if chatEffectsSelection == 0 {
+                    messagesSection
+                }
+                if chatEffectsSelection == 0 {
+                    bottomSection
+                }
             }
         }
         .overlay {
@@ -331,7 +336,132 @@ struct MainScreenView: View {
         VStack(spacing: 8) {
             firstRow
             secondRow
+            if chatEffectsSelection == 1 {
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 0) {
+                        effectsBannerSection
+                            .padding(.top, 0)
+                        effectsHotSection
+                        effectsNewSection
+                            .padding(.bottom, 24)
+                    }
+                }
+            }
         }
+    }
+    
+    private let effectsBannerData: [(imageName: String, title: String)] = [
+        ("BannerOne", "Anime"),
+        ("BannerTwo", "Baby Face"),
+        ("BannerThree", "Cube World")
+    ]
+    
+    // Горизонтальная коллекция баннеров при выборе effects (snap-to-center по ячейкам, spacing 20)
+    private var effectsBannerSection: some View {
+        GeometryReader { geometry in
+            let screenWidth = geometry.size.width
+            let cellWidth = screenWidth * 0.8
+            let sidePadding = (screenWidth - cellWidth) / 2
+            let spacingBetweenCells: CGFloat = 20
+            let cellHeight: CGFloat = cellWidth * 0.56
+            
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: spacingBetweenCells) {
+                    ForEach(Array(effectsBannerData.enumerated()), id: \.offset) { offset, item in
+                        ZStack(alignment: .bottomLeading) {
+                            Image(item.imageName)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: cellWidth, height: cellHeight)
+                            Text(item.title)
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundColor(.white)
+                                .padding(.leading, 10)
+                                .padding(.bottom, 10)
+                        }
+                        .frame(width: cellWidth, height: cellHeight)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .id(offset)
+                    }
+                }
+                .padding(.horizontal, sidePadding)
+            }
+            .scrollPosition(id: $scrollBannerId)
+            .scrollTargetBehavior(.viewAligned(limitBehavior: .always))
+        }
+        .frame(height: 220)
+    }
+    
+    // Секция эффектов с заголовком (Hot / New) и горизонтальной коллекцией 4× effectCard (30% ширины, без paging)
+    private func effectsSectionHeader(title: String) -> some View {
+        HStack {
+            Text(title)
+                .font(.system(size: 19, weight: .bold))
+                .foregroundColor(.white)
+            Spacer()
+            Button(action: {}) {
+                HStack(spacing: 4) {
+                    Text("See all")
+                        .font(.system(size: 15, weight: .regular))
+                        .foregroundColor(.white)
+                    Image("chevronRight")
+                        .resizable()
+                        .renderingMode(.template)
+                        .scaledToFit()
+                        .frame(width: 26, height: 26)
+                        .foregroundColor(.white)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color(hex: "#2B2D30"))
+                .cornerRadius(8)
+            }
+            
+        }
+        .padding(.horizontal, 30)
+    }
+    
+    private var effectsHotSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            effectsSectionHeader(title: "Hot")
+            effectsCardCollection()
+        }
+    }
+    
+    private var effectsNewSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            effectsSectionHeader(title: "New")
+            effectsCardCollection()
+        }
+        .padding(.top, 0)
+    }
+    
+    private func effectsCardCollection() -> some View {
+        GeometryReader { geometry in
+            let cellWidth = geometry.size.width * 0.3
+            let cellHeight = cellWidth * 1.4 * 1.25
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(0..<4, id: \.self) { _ in
+                        ZStack(alignment: .bottomLeading) {
+                            Image("effectCard")
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: cellWidth, height: cellHeight)
+                            Text("name")
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundColor(.white)
+                                .padding(.leading, 20)
+                                .padding(.bottom, 10)
+                        }
+                        .frame(width: cellWidth, height: cellHeight)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                }
+                .padding(.horizontal, 20)
+            }
+        }
+        .frame(height: 245)
     }
     
     // Первый ряд: chat/effects свитчер, кнопка +, градиентная кнопка 1000
@@ -415,14 +545,18 @@ struct MainScreenView: View {
     // Второй ряд: photo/video свитчер слева, кнопки справа
     private var secondRow: some View {
         GeometryReader { geometry in
-            let switchWidth: CGFloat = 155
+            let baseSwitchWidth: CGFloat = 155
             let switchPadding: CGFloat = 8
-            let totalSwitchWidth = switchWidth + (switchPadding * 2)
             let sidePadding: CGFloat = 40
             let spacingBetweenButtons: CGFloat = 4
             let totalSpacing = spacingBetweenButtons * 3 // 3 отступа между 4 элементами
-            let availableWidth = geometry.size.width - (sidePadding * 2) - totalSwitchWidth - totalSpacing
+            let totalSwitchWidthBase = baseSwitchWidth + (switchPadding * 2)
+            let availableWidth = geometry.size.width - (sidePadding * 2) - totalSwitchWidthBase - totalSpacing
             let buttonWidth = availableWidth / 3
+            // При effects расширяем свитчер photo/video на ширину trash + plus + 2×spacing
+            let extraWidthForEffects = 2 * buttonWidth + 2 * spacingBetweenButtons
+            let switchWidth: CGFloat = chatEffectsSelection == 1 ? baseSwitchWidth + extraWidthForEffects : baseSwitchWidth
+            let totalSwitchWidth = switchWidth + (switchPadding * 2)
             
             HStack(alignment: .center, spacing: spacingBetweenButtons) {
                 // Свитчер photo/video
@@ -435,20 +569,22 @@ struct MainScreenView: View {
                 .background(Color(hex: "#1F2023"))
                 .cornerRadius(12)
                 
-                // Кнопки: plus, clockArrow, trash
+                // Кнопки: plus, clockArrow, trash (trash и plus скрыты при effects)
                 
-                Button(action: {
-                    showDeleteChatAlert = true
-                }) {
-                    Image("trash")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 32, height: 32)
-                        .foregroundColor(.white)
+                if chatEffectsSelection == 0 {
+                    Button(action: {
+                        showDeleteChatAlert = true
+                    }) {
+                        Image("trash")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 32, height: 32)
+                            .foregroundColor(.white)
+                    }
+                    .frame(width: buttonWidth, height: 51)
+                    .background(Color(hex: "#1F2023"))
+                    .cornerRadius(12)
                 }
-                .frame(width: buttonWidth, height: 51)
-                .background(Color(hex: "#1F2023"))
-                .cornerRadius(12)
                 Button(action: {
                     onOpenHistory?()
                 }) {
@@ -462,16 +598,18 @@ struct MainScreenView: View {
                 .background(Color(hex: "#1F2023"))
                 .cornerRadius(12)
                 
-                Button(action: {}) {
-                    Image("plus")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 32, height: 32)
-                        .foregroundColor(.white)
+                if chatEffectsSelection == 0 {
+                    Button(action: {}) {
+                        Image("plus")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 32, height: 32)
+                            .foregroundColor(.white)
+                    }
+                    .frame(width: buttonWidth, height: 51)
+                    .background(Color(hex: "#1F2023"))
+                    .cornerRadius(12)
                 }
-                .frame(width: buttonWidth, height: 51)
-                .background(Color(hex: "#1F2023"))
-                .cornerRadius(12)
             }
             .padding(.leading, sidePadding)
             .padding(.trailing, sidePadding)
