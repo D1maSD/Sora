@@ -194,7 +194,7 @@ struct HistoryView: View {
     private var listState: some View {
         VStack(spacing: 0) {
             ScrollView {
-                LazyVStack(spacing: 0) {
+                LazyVStack(spacing: 4) {
                     ForEach(chats) { chat in
                         chatRow(chat)
                     }
@@ -227,7 +227,7 @@ struct HistoryView: View {
                     .padding(.vertical, 15)
                 }
                 .background(Color(hex: "#1F2023"))
-                .cornerRadius(20)
+                .cornerRadius(13)
             }
             .buttonStyle(.plain)
             
