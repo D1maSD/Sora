@@ -16,6 +16,7 @@ struct ContentView: View {
             if showHistory {
                 HistoryView(
                     chats: chats,
+                    onBack: { showHistory = false },
                     onSelectChat: { chat in
                         currentChatId = chat.id
                         currentChatMessages = chat.messages
@@ -25,6 +26,13 @@ struct ContentView: View {
                         currentChatId = nil
                         currentChatMessages = []
                         showHistory = false
+                    },
+                    onDeleteChat: { chat in
+                        chats.removeAll { $0.id == chat.id }
+                        if currentChatId == chat.id {
+                            currentChatId = nil
+                            currentChatMessages = []
+                        }
                     }
                 )
             } else {
@@ -33,7 +41,7 @@ struct ContentView: View {
                     onOpenHistory: { showHistory = true },
                     onFirstMessageSent: {
                         if currentChatId == nil {
-                            let newChat = Chat(id: UUID(), messages: currentChatMessages)
+                            let newChat = Chat(id: UUID(), messages: currentChatMessages, createdAt: Date())
                             chats.append(newChat)
                             currentChatId = newChat.id
                         }

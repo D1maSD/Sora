@@ -25,6 +25,13 @@ struct IdentifiableMedia: Identifiable {
 struct Chat: Identifiable {
     let id: UUID
     var messages: [Message]
+    let createdAt: Date
+    
+    init(id: UUID = UUID(), messages: [Message], createdAt: Date = Date()) {
+        self.id = id
+        self.messages = messages
+        self.createdAt = createdAt
+    }
     
     /// Первое предложение первого сообщения (для тайтла ячейки)
     var title: String {
@@ -38,7 +45,7 @@ struct Chat: Identifiable {
 }
 
 // Модель сообщения
-struct Message: Identifiable {
+struct Message: Identifiable, Equatable {
     let id = UUID()
     let text: String
     let image: UIImage?
@@ -50,6 +57,10 @@ struct Message: Identifiable {
         self.image = image
         self.videoURL = videoURL
         self.isIncoming = isIncoming
+    }
+    
+    static func == (lhs: Message, rhs: Message) -> Bool {
+        lhs.id == rhs.id
     }
 }
 
