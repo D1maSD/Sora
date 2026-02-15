@@ -33,6 +33,11 @@ struct ContentView: View {
                             currentChatId = nil
                             currentChatMessages = []
                         }
+                    },
+                    onRenameChat: { chat, newName in
+                        if let idx = chats.firstIndex(where: { $0.id == chat.id }) {
+                            chats[idx].customTitle = newName
+                        }
                     }
                 )
             } else {

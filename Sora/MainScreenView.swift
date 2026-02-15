@@ -26,15 +26,18 @@ struct Chat: Identifiable {
     let id: UUID
     var messages: [Message]
     let createdAt: Date
+    var customTitle: String?
     
-    init(id: UUID = UUID(), messages: [Message], createdAt: Date = Date()) {
+    init(id: UUID = UUID(), messages: [Message], createdAt: Date = Date(), customTitle: String? = nil) {
         self.id = id
         self.messages = messages
         self.createdAt = createdAt
+        self.customTitle = customTitle
     }
     
-    /// Первое предложение первого сообщения (для тайтла ячейки)
+    /// Первое предложение первого сообщения или customTitle (для тайтла ячейки)
     var title: String {
+        if let custom = customTitle, !custom.isEmpty { return custom }
         guard let first = messages.first(where: { !$0.text.isEmpty }) else { return "New chat" }
         let trimmed = first.text.trimmingCharacters(in: .whitespacesAndNewlines)
         if let end = trimmed.firstIndex(of: ".") ?? trimmed.firstIndex(of: "!") ?? trimmed.firstIndex(of: "?") {
@@ -1159,6 +1162,10 @@ struct ShareSheet: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
+// Цвет разделителей алертов (на 20% тоньше: 1pt → 0.8)
+private let alertDividerHeight: CGFloat = 0.8
+private let alertDividerColor = Color(hex: "#333334")
+
 // Кастомный алерт удаления чата (фон #232323)
 struct DeleteChatAlertView: View {
     let onCancel: () -> Void
@@ -1170,32 +1177,138 @@ struct DeleteChatAlertView: View {
                 .ignoresSafeArea()
                 .onTapGesture(perform: onCancel)
             
-            VStack(spacing: 20) {
+            VStack(spacing: 0) {
                 Text("Delete chat?")
                     .font(.system(size: 17, weight: .bold))
                     .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 24)
+                    .padding(.bottom, 8)
                 
-                Text("This history will be permanently removed.")
+                Text("This history will be permanently")
                     .font(.system(size: 15, weight: .regular))
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+                Text("removed.")
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 20)
                 
-                HStack(spacing: 16) {
-                    Button("Cancel") {
-                        onCancel()
+                Rectangle()
+                    .fill(alertDividerColor)
+                    .frame(height: alertDividerHeight)
+                
+                HStack(spacing: 0) {
+                    Button(action: onCancel) {
+                        Text("Cancel")
+                            .font(.system(size: 17, weight: .regular))
+                            .foregroundColor(Color(hex: "#0C4CD6"))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
                     }
-                    .font(.system(size: 17, weight: .regular))
-                    .foregroundColor(Color(hex: "#6CABE9"))
+                    .buttonStyle(.plain)
                     
-                    Button("Delete") {
-                        onDelete()
+                    Rectangle()
+                        .fill(alertDividerColor)
+                        .frame(width: alertDividerHeight, height: 44)
+                    
+                    Button(action: onDelete) {
+                        Text("Delete")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(Color(hex: "#FF453A"))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
                     }
-                    .font(.system(size: 17, weight: .regular))
-                    .foregroundColor(.red)
+                    .buttonStyle(.plain)
                 }
-                .padding(.top, 8)
             }
-            .padding(24)
+            .frame(maxWidth: 280)
+            .background(Color(hex: "#232323"))
+            .cornerRadius(14)
+        }
+    }
+}
+
+// Алерт переименования чата
+struct RenameChatAlertView: View {
+    let chat: Chat
+    @Binding var text: String
+    let onCancel: () -> Void
+    let onOK: (String) -> Void
+    
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.5)
+                .ignoresSafeArea()
+                .onTapGesture(perform: onCancel)
+            
+            VStack(spacing: 0) {
+                Text("Rename Chat")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 22)
+                    .padding(.bottom, 8)
+                
+                Text("Enter a new name to make it easier to")
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 15)
+                Text("find this chat in your history.")
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 16)
+                
+                TextField("", text: $text, prompt: Text("New chat name").foregroundColor(Color(hex: "#4A4A4C")))
+                    .font(.system(size: 17, weight: .regular))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 12)
+                    .frame(height: 31)
+                    .background(Color(hex: "#2C2C2E"))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color(hex: "#333334"), lineWidth: 2)
+                    )
+                    .cornerRadius(7)
+                    .padding(.horizontal, 15)
+                    .padding(.bottom, 20)
+                
+                Rectangle()
+                    .fill(alertDividerColor)
+                    .frame(height: alertDividerHeight)
+                
+                HStack(spacing: 0) {
+                    Button(action: onCancel) {
+                        Text("Cancel")
+                            .font(.system(size: 17, weight: .regular))
+                            .foregroundColor(Color(hex: "#0C4CD6"))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                    }
+                    .buttonStyle(.plain)
+                    
+                    Rectangle()
+                        .fill(alertDividerColor)
+                        .frame(width: alertDividerHeight, height: 44)
+                    
+                    Button(action: {
+                        onOK(text.trimmingCharacters(in: .whitespacesAndNewlines))
+                    }) {
+                        Text("OK")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(Color(hex: "#0C4CD6"))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
             .frame(maxWidth: 280)
             .background(Color(hex: "#232323"))
             .cornerRadius(14)

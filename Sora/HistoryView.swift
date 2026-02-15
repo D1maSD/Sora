@@ -17,8 +17,12 @@ struct HistoryView: View {
     let onSelectChat: (Chat) -> Void
     let onNewChat: () -> Void
     let onDeleteChat: (Chat) -> Void
+    let onRenameChat: (Chat, String) -> Void
     
     @State private var contextMenuChat: Chat?
+    @State private var chatToDelete: Chat?
+    @State private var chatToRename: Chat?
+    @State private var renameText: String = ""
     
     var body: some View {
         ZStack {
@@ -86,6 +90,37 @@ struct HistoryView: View {
                     contextMenuView(chat: chat)
                 }
             }
+            .overlay {
+                if let chat = chatToDelete {
+                    DeleteChatAlertView(
+                        onCancel: { chatToDelete = nil },
+                        onDelete: {
+                            onDeleteChat(chat)
+                            chatToDelete = nil
+                        }
+                    )
+                }
+            }
+            .overlay {
+                if let chat = chatToRename {
+                    RenameChatAlertView(
+                        chat: chat,
+                        text: $renameText,
+                        onCancel: {
+                            chatToRename = nil
+                            renameText = ""
+                        },
+                        onOK: { newName in
+                            let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !trimmed.isEmpty {
+                                onRenameChat(chat, trimmed)
+                            }
+                            chatToRename = nil
+                            renameText = ""
+                        }
+                    )
+                }
+            }
         }
     }
     
@@ -93,14 +128,16 @@ struct HistoryView: View {
         VStack(alignment: .leading, spacing: 0) {
             Button(action: {
                 contextMenuChat = nil
-                // TODO: Rename
+                renameText = chat.title
+                chatToRename = chat
             }) {
                 HStack(spacing: 12) {
-                    Image(systemName: "pencil")
-                        .font(.system(size: 16))
-                        .foregroundColor(.white)
                     Text("Rename")
                         .font(.system(size: 17, weight: .regular))
+                        .foregroundColor(.white)
+                    Spacer()
+                    Image(systemName: "pencil")
+                        .font(.system(size: 17.6))
                         .foregroundColor(.white)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -114,17 +151,18 @@ struct HistoryView: View {
             
             Button(action: {
                 contextMenuChat = nil
-                onDeleteChat(chat)
+                chatToDelete = chat
             }) {
                 HStack(spacing: 12) {
-                    Image("trash")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 18, height: 18)
-                        .foregroundColor(.red)
                     Text("Delete")
                         .font(.system(size: 17, weight: .regular))
                         .foregroundColor(.red)
+                    Spacer()
+                    Image("redTrash")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 24, height: 24)
+                        .foregroundColor(Color(hex: "#0C4CD6"))
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 16)
@@ -199,10 +237,10 @@ struct HistoryView: View {
                 Image("threeDots")
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 24, height: 24)
+                    .frame(width: 29, height: 29)
                     .foregroundColor(.white)
             }
-            .padding(.trailing, 20)
+            .padding(.trailing, 15)
         }
     }
     
@@ -244,6 +282,7 @@ struct HistoryView: View {
         onBack: {},
         onSelectChat: { _ in },
         onNewChat: {},
-        onDeleteChat: { _ in }
+        onDeleteChat: { _ in },
+        onRenameChat: { _, _ in }
     )
 }
