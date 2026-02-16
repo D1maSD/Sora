@@ -6,11 +6,16 @@
 //
 
 import SwiftUI
+import ApphudSDK
 
 @main
 struct SoraApp: App {
     @State private var isLoaded = false
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    
+    init() {
+        Apphud.start(apiKey: "app_TZDsHNqKL7UkoaScjN6oyShxkzRX97")
+    }
     
     var body: some Scene {
         WindowGroup {
@@ -23,8 +28,10 @@ struct SoraApp: App {
             } else {
                 SplashView()
                     .onAppear {
-                        // Симулируем загрузку приложения
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                        Task { @MainActor in
+                            async let auth = AuthService.shared.bootstrapUser()
+                            try? await Task.sleep(nanoseconds: 2_000_000_000)
+                            await auth
                             withAnimation {
                                 isLoaded = true
                             }
