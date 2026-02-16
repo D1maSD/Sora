@@ -9,6 +9,7 @@ struct SettingsView: View {
     let onBack: () -> Void
     
     @State private var notificationsEnabled = false
+    @State private var showNotificationsAlert = false
     
     var body: some View {
         ZStack {
@@ -29,6 +30,23 @@ struct SettingsView: View {
                 }
                 .frame(maxHeight: .infinity)
                 footer
+            }
+        }
+        .onChange(of: notificationsEnabled) { _, newValue in
+            if newValue {
+                showNotificationsAlert = true
+                notificationsEnabled = false
+            }
+        }
+        .overlay {
+            if showNotificationsAlert {
+                AllowNotificationsAlertView(
+                    onCancel: { showNotificationsAlert = false },
+                    onAllow: {
+                        notificationsEnabled = true
+                        showNotificationsAlert = false
+                    }
+                )
             }
         }
     }
@@ -54,7 +72,7 @@ struct SettingsView: View {
                 
                 Spacer()
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, 40)
             
             Button(action: {}) {
                 HStack(spacing: 6) {
@@ -67,12 +85,21 @@ struct SettingsView: View {
                         .frame(width: 24, height: 24)
                         .foregroundColor(.white)
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, 12)
                 .padding(.vertical, 10)
-                .background(Color(hex: "#2F76BC"))
-                .cornerRadius(20)
+                .background(
+                    LinearGradient(
+                        gradient: Gradient(colors: [
+                            Color(hex: "#6CABE9"),
+                            Color(hex: "#2F76BC")
+                        ]),
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .cornerRadius(10)
             }
-            .padding(.trailing, 20)
+            .padding(.trailing, 40)
         }
         .padding(.top, 20)
         .padding(.bottom, 24)
@@ -107,14 +134,12 @@ struct SettingsView: View {
             Text(title)
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundColor(.white.opacity(1.0))
-                .padding(.horizontal, 20)
+                .padding(.horizontal, 30)
             
             VStack(spacing: 8) {
                 content()
             }
-            .background(Color(hex: "#0C151F"))
-            .cornerRadius(12)
-            .padding(.horizontal, 40)
+            .padding(.horizontal, 30)
         }
     }
     
@@ -146,9 +171,11 @@ struct SettingsView: View {
                 
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 14)
+            .padding(.vertical, 6.5)
         }
         .buttonStyle(.plain)
+        .background(Color.black.opacity(0.7))
+        .cornerRadius(12)
     }
     
     private func settingsRowWithToggle(icon: String, title: String, isOn: Binding<Bool>) -> some View {
@@ -157,12 +184,12 @@ struct SettingsView: View {
                 Image(systemName: "bell")
                     .font(.system(size: 20))
                     .foregroundColor(Color(hex: "#2F76BC"))
-                    .frame(width: 24, height: 24)
+                    .frame(width: 30, height: 30)
             } else {
                 Image(icon)
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 24, height: 24)
+                    .frame(width: 30, height: 30)
             }
             
             Text(title)
@@ -174,9 +201,12 @@ struct SettingsView: View {
             Toggle("", isOn: isOn)
                 .labelsHidden()
                 .tint(Color(hex: "#2F76BC"))
+                .padding(.trailing, 10)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6.5)
+        .background(Color.black.opacity(0.7))
+        .cornerRadius(12)
     }
     
     private var footer: some View {
@@ -184,6 +214,74 @@ struct SettingsView: View {
             .font(.system(size: 13, weight: .regular))
             .foregroundColor(.white.opacity(0.5))
             .padding(.bottom, 34)
+    }
+}
+
+private let notificationsAlertDividerHeight: CGFloat = 0.8
+private let notificationsAlertDividerColor = Color(hex: "#333334")
+
+struct AllowNotificationsAlertView: View {
+    let onCancel: () -> Void
+    let onAllow: () -> Void
+    
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.5)
+                .ignoresSafeArea()
+                .onTapGesture(perform: onCancel)
+            
+            VStack(spacing: 0) {
+                Text("Allow notifications?")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 24)
+                    .padding(.bottom, 8)
+                
+                Text("This app will be able to send you")
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 10)
+                Text("messages in your notification center")
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 20)
+                
+                Rectangle()
+                    .fill(notificationsAlertDividerColor)
+                    .frame(height: notificationsAlertDividerHeight)
+                
+                HStack(spacing: 0) {
+                    Button(action: onCancel) {
+                        Text("Cancel")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(Color(hex: "#0C4CD6"))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                    }
+                    .buttonStyle(.plain)
+                    
+                    Rectangle()
+                        .fill(notificationsAlertDividerColor)
+                        .frame(width: notificationsAlertDividerHeight, height: 44)
+                    
+                    Button(action: onAllow) {
+                        Text("Allow")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(Color(hex: "#0C4CD6"))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .frame(maxWidth: 280)
+            .background(Color(hex: "#232323"))
+            .cornerRadius(14)
+        }
     }
 }
 
