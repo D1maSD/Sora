@@ -278,6 +278,7 @@ struct RoundedCorner: Shape {
 struct MainScreenView: View {
     @Binding var messages: [Message]
     var onOpenHistory: (() -> Void)? = nil
+    var onOpenSettings: (() -> Void)? = nil
     var onFirstMessageSent: (() -> Void)? = nil
     var onDeleteChat: (() -> Void)? = nil
     
@@ -295,6 +296,7 @@ struct MainScreenView: View {
     @State private var imageToView: IdentifiableMedia? = nil
     @State private var showDeleteChatAlert = false
     @State private var scrollBannerId: Int? = 0
+    @State private var showEffectsList = false
     
     var body: some View {
         ZStack {
@@ -328,6 +330,9 @@ struct MainScreenView: View {
                     }
                 )
             }
+        }
+        .fullScreenCover(isPresented: $showEffectsList) {
+            EffectsListView(onBack: { showEffectsList = false })
         }
     }
     
@@ -393,13 +398,13 @@ struct MainScreenView: View {
     }
     
     // Секция эффектов с заголовком (Hot / New) и горизонтальной коллекцией 4× effectCard (30% ширины, без paging)
-    private func effectsSectionHeader(title: String) -> some View {
+    private func effectsSectionHeader(title: String, onSeeAll: @escaping () -> Void) -> some View {
         HStack {
             Text(title)
                 .font(.system(size: 19, weight: .bold))
                 .foregroundColor(.white)
             Spacer()
-            Button(action: {}) {
+            Button(action: onSeeAll) {
                 HStack(spacing: 4) {
                     Text("See all")
                         .font(.system(size: 15, weight: .regular))
@@ -416,21 +421,20 @@ struct MainScreenView: View {
                 .background(Color(hex: "#2B2D30"))
                 .cornerRadius(8)
             }
-            
         }
         .padding(.horizontal, 30)
     }
     
     private var effectsHotSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            effectsSectionHeader(title: "Hot")
+            effectsSectionHeader(title: "Hot", onSeeAll: { showEffectsList = true })
             effectsCardCollection()
         }
     }
     
     private var effectsNewSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            effectsSectionHeader(title: "New")
+            effectsSectionHeader(title: "New", onSeeAll: { showEffectsList = true })
             effectsCardCollection()
         }
         .padding(.top, 0)
@@ -537,6 +541,18 @@ struct MainScreenView: View {
             }
             .padding(.leading, sidePadding)
             .padding(.trailing, sidePadding)
+            .overlay(alignment: .topTrailing) {
+                if let onOpenSettings = onOpenSettings {
+                    Button(action: { onOpenSettings() }) {
+                        Image(systemName: "gearshape")
+                            .font(.system(size: 22))
+                            .foregroundColor(.white)
+                            .frame(width: 44, height: 44)
+                    }
+                    .padding(.top, 4)
+                    .padding(.trailing, sidePadding)
+                }
+            }
         }
         .frame(height: 71)
         .padding(.top, 20)

@@ -10,10 +10,13 @@ struct ContentView: View {
     @State private var currentChatId: UUID?
     @State private var currentChatMessages: [Message] = []
     @State private var showHistory = false
+    @State private var showSettings = false
     
     var body: some View {
         Group {
-            if showHistory {
+            if showSettings {
+                SettingsView(onBack: { showSettings = false })
+            } else if showHistory {
                 HistoryView(
                     chats: chats,
                     onBack: { showHistory = false },
@@ -44,6 +47,7 @@ struct ContentView: View {
                 MainScreenView(
                     messages: $currentChatMessages,
                     onOpenHistory: { showHistory = true },
+                    onOpenSettings: { showSettings = true },
                     onFirstMessageSent: {
                         if currentChatId == nil {
                             let newChat = Chat(id: UUID(), messages: currentChatMessages, createdAt: Date())
