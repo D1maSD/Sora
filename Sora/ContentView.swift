@@ -6,11 +6,13 @@
 import SwiftUI
 
 struct ContentView: View {
-    @State private var chats: [Chat] = []
+    private let store = ChatStore.shared
+    
     @State private var currentChatId: UUID?
     @State private var currentChatMessages: [Message] = []
     @State private var showHistory = false
     @State private var showSettings = false
+    @State private var sessionItems: [ChatSessionItem] = []
     
     var body: some View {
         Group {
@@ -18,11 +20,11 @@ struct ContentView: View {
                 SettingsView(onBack: { showSettings = false })
             } else if showHistory {
                 HistoryView(
-                    chats: chats,
+                    sessions: sessionItems,
                     onBack: { showHistory = false },
-                    onSelectChat: { chat in
-                        currentChatId = chat.id
-                        currentChatMessages = chat.messages
+                    onSelectChat: { item in
+                        currentChatId = item.id
+                        currentChatMessages = store.fetchMessages(sessionId: item.id)
                         showHistory = false
                     },
                     onNewChat: {
@@ -30,44 +32,53 @@ struct ContentView: View {
                         currentChatMessages = []
                         showHistory = false
                     },
-                    onDeleteChat: { chat in
-                        chats.removeAll { $0.id == chat.id }
-                        if currentChatId == chat.id {
+                    onDeleteChat: { item in
+                        store.deleteSession(sessionId: item.id)
+                        sessionItems = store.fetchAllSessions()
+                        if currentChatId == item.id {
                             currentChatId = nil
                             currentChatMessages = []
                         }
                     },
-                    onRenameChat: { chat, newName in
-                        if let idx = chats.firstIndex(where: { $0.id == chat.id }) {
-                            chats[idx].customTitle = newName
-                        }
+                    onRenameChat: { item, newName in
+                        store.renameSession(sessionId: item.id, customTitle: newName)
+                        sessionItems = store.fetchAllSessions()
                     }
                 )
+                .onAppear {
+                    sessionItems = store.fetchAllSessions()
+                }
             } else {
                 MainScreenView(
                     messages: $currentChatMessages,
-                    onOpenHistory: { showHistory = true },
+                    onOpenHistory: {
+                        showHistory = true
+                    },
                     onOpenSettings: { showSettings = true },
                     onFirstMessageSent: {
-                        if currentChatId == nil {
-                            let newChat = Chat(id: UUID(), messages: currentChatMessages, createdAt: Date())
-                            chats.append(newChat)
-                            currentChatId = newChat.id
+                        if currentChatId == nil, let firstUserText = currentChatMessages.first(where: { !$0.isIncoming })?.text {
+                            let sessionId = store.createSession(firstMessageText: firstUserText)
+                            store.saveMessages(sessionId: sessionId, messages: currentChatMessages)
+                            currentChatId = sessionId
                         }
                     },
                     onDeleteChat: {
                         if let id = currentChatId {
-                            chats.removeAll { $0.id == id }
-                            currentChatId = nil
-                            currentChatMessages = []
+                            store.deleteSession(sessionId: id)
                         }
+                        currentChatId = nil
+                        currentChatMessages = []
+                    },
+                    onPlusTapped: {
+                        currentChatId = nil
+                        currentChatMessages = []
                     }
                 )
             }
         }
-        .onChange(of: currentChatMessages) { newValue in
-            if let id = currentChatId, let idx = chats.firstIndex(where: { $0.id == id }) {
-                chats[idx].messages = newValue
+        .onChange(of: currentChatMessages) { _, newValue in
+            if let id = currentChatId {
+                store.saveMessages(sessionId: id, messages: newValue)
             }
         }
     }

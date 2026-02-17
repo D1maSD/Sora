@@ -12,16 +12,16 @@ private let cellDateFormatter: DateFormatter = {
 }()
 
 struct HistoryView: View {
-    let chats: [Chat]
+    let sessions: [ChatSessionItem]
     let onBack: () -> Void
-    let onSelectChat: (Chat) -> Void
+    let onSelectChat: (ChatSessionItem) -> Void
     let onNewChat: () -> Void
-    let onDeleteChat: (Chat) -> Void
-    let onRenameChat: (Chat, String) -> Void
+    let onDeleteChat: (ChatSessionItem) -> Void
+    let onRenameChat: (ChatSessionItem, String) -> Void
     
-    @State private var contextMenuChat: Chat?
-    @State private var chatToDelete: Chat?
-    @State private var chatToRename: Chat?
+    @State private var contextMenuSession: ChatSessionItem?
+    @State private var sessionToDelete: ChatSessionItem?
+    @State private var sessionToRename: ChatSessionItem?
     @State private var renameText: String = ""
     
     var body: some View {
@@ -72,50 +72,50 @@ struct HistoryView: View {
                 .padding(.top, 20)
                 .padding(.bottom, 16)
                 
-                if chats.isEmpty {
+                if sessions.isEmpty {
                     emptyState
                 } else {
                     listState
                 }
             }
             .overlay {
-                if let chat = contextMenuChat {
+                if contextMenuSession != nil {
                     Color.black.opacity(0.3)
                         .ignoresSafeArea()
-                        .onTapGesture { contextMenuChat = nil }
+                        .onTapGesture { contextMenuSession = nil }
                 }
             }
             .overlay(alignment: .topTrailing) {
-                if let chat = contextMenuChat {
-                    contextMenuView(chat: chat)
+                if let session = contextMenuSession {
+                    contextMenuView(session: session)
                 }
             }
             .overlay {
-                if let chat = chatToDelete {
+                if let session = sessionToDelete {
                     DeleteChatAlertView(
-                        onCancel: { chatToDelete = nil },
+                        onCancel: { sessionToDelete = nil },
                         onDelete: {
-                            onDeleteChat(chat)
-                            chatToDelete = nil
+                            onDeleteChat(session)
+                            sessionToDelete = nil
                         }
                     )
                 }
             }
             .overlay {
-                if let chat = chatToRename {
+                if let session = sessionToRename {
                     RenameChatAlertView(
-                        chat: chat,
+                        title: session.title,
                         text: $renameText,
                         onCancel: {
-                            chatToRename = nil
+                            sessionToRename = nil
                             renameText = ""
                         },
                         onOK: { newName in
                             let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
                             if !trimmed.isEmpty {
-                                onRenameChat(chat, trimmed)
+                                onRenameChat(session, trimmed)
                             }
-                            chatToRename = nil
+                            sessionToRename = nil
                             renameText = ""
                         }
                     )
@@ -124,12 +124,12 @@ struct HistoryView: View {
         }
     }
     
-    private func contextMenuView(chat: Chat) -> some View {
+    private func contextMenuView(session: ChatSessionItem) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Button(action: {
-                contextMenuChat = nil
-                renameText = chat.title
-                chatToRename = chat
+                contextMenuSession = nil
+                renameText = session.title
+                sessionToRename = session
             }) {
                 HStack(spacing: 12) {
                     Text("Rename")
@@ -150,8 +150,8 @@ struct HistoryView: View {
                 .background(Color.white.opacity(0.2))
             
             Button(action: {
-                contextMenuChat = nil
-                chatToDelete = chat
+                contextMenuSession = nil
+                sessionToDelete = session
             }) {
                 HStack(spacing: 12) {
                     Text("Delete")
@@ -195,8 +195,8 @@ struct HistoryView: View {
         VStack(spacing: 0) {
             ScrollView {
                 LazyVStack(spacing: 4) {
-                    ForEach(chats) { chat in
-                        chatRow(chat)
+                    ForEach(sessions) { session in
+                        chatRow(session)
                     }
                 }
                 .padding(.horizontal, 20)
@@ -207,17 +207,17 @@ struct HistoryView: View {
         }
     }
     
-    private func chatRow(_ chat: Chat) -> some View {
+    private func chatRow(_ session: ChatSessionItem) -> some View {
         ZStack(alignment: .trailing) {
-            Button(action: { onSelectChat(chat) }) {
+            Button(action: { onSelectChat(session) }) {
                 HStack(alignment: .center, spacing: 0) {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text(chat.title)
+                        Text(session.title)
                             .font(.system(size: 17, weight: .regular))
                             .foregroundColor(.white)
                             .lineLimit(1)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                        Text(cellDateFormatter.string(from: chat.createdAt))
+                        Text(cellDateFormatter.string(from: session.createdAt))
                             .font(.system(size: 16, weight: .regular))
                             .foregroundColor(.white.opacity(0.7))
                     }
@@ -232,7 +232,7 @@ struct HistoryView: View {
             .buttonStyle(.plain)
             
             Button(action: {
-                contextMenuChat = chat
+                contextMenuSession = session
             }) {
                 Image("threeDots")
                     .resizable()
@@ -274,10 +274,8 @@ struct HistoryView: View {
 
 #Preview {
     HistoryView(
-        chats: [
-            Chat(id: UUID(), messages: [
-                Message(text: "First message here.", image: nil, videoURL: nil, isIncoming: false)
-            ], createdAt: Date())
+        sessions: [
+            ChatSessionItem(id: UUID(), title: "First message here.", createdAt: Date())
         ],
         onBack: {},
         onSelectChat: { _ in },

@@ -72,13 +72,14 @@ struct Chat: Identifiable {
 
 // Модель сообщения
 struct Message: Identifiable, Equatable {
-    let id = UUID()
+    let id: UUID
     let text: String
     let image: UIImage?
     let videoURL: URL?
     var isIncoming: Bool // true = входящее (от Sora), false = исходящее (от пользователя)
     
-    init(text: String, image: UIImage? = nil, videoURL: URL? = nil, isIncoming: Bool) {
+    init(id: UUID = UUID(), text: String, image: UIImage? = nil, videoURL: URL? = nil, isIncoming: Bool) {
+        self.id = id
         self.text = text
         self.image = image
         self.videoURL = videoURL
@@ -109,7 +110,7 @@ struct MessageView: View {
                     .scaledToFill()
                     .frame(maxWidth: .infinity)
                     .clipped()
-                    .cornerRadius(25)
+                    .cornerRadius(20)
                     .padding(.top, 25)
                     .padding(.horizontal, 25)
                     .onTapGesture { onMediaTap?() }
@@ -165,7 +166,7 @@ struct MessageView: View {
             .padding(.leading, !hasMedia ? 16 : 0)
         }
         .background(Color(hex: "#1F2023"))
-        .cornerRadius(40)
+        .cornerRadius(24)
         .frame(maxWidth: hasMedia ? maxWidth : nil)
         .fixedSize(horizontal: !hasMedia, vertical: false)
         .frame(maxWidth: maxWidth, alignment: .trailing)
@@ -193,16 +194,16 @@ struct IncomingMessageView: View {
                     .scaledToFill()
                     .frame(maxWidth: .infinity)
                     .clipped()
-                    .cornerRadius(25)
-                    .padding(.top, 25)
-                    .padding(.horizontal, 25)
+                    .cornerRadius(20)
+                    .padding(.top, 17)
+                    .padding(.horizontal, 22) //padding image inside of message
                     .onTapGesture { onMediaTap?() }
             }
             // Превью видео (если есть)
             else if let videoURL = message.videoURL {
                 VideoPreviewView(url: videoURL)
-                    .padding(.top, 25)
-                    .padding(.horizontal, 25)
+                    .padding(.top, 17)
+                    .padding(.horizontal, 22)
                     .onTapGesture { onMediaTap?() }
             }
             
@@ -219,12 +220,12 @@ struct IncomingMessageView: View {
             
             // HStack с кнопками внизу
             HStack(spacing: 5) {
-                if !hasMedia {
-                    Spacer(minLength: 0)
-                } else {
-                    Spacer()
-                }
-                
+                //                if !hasMedia {
+                //                    Spacer(minLength: 0)
+                //                } else {
+                //                    Spacer()
+                //                }
+                HStack(spacing: 5) {
                 // Кнопка trash
                 Button(action: onTrash) {
                     Image("trash")
@@ -251,6 +252,8 @@ struct IncomingMessageView: View {
                         .frame(width: 29, height: 29)
                         .foregroundColor(.white)
                 }
+            }
+                .padding(.leading, 20)
                 
                 // Spacer между share и refresh
                 Spacer()
@@ -263,6 +266,7 @@ struct IncomingMessageView: View {
                         .frame(width: 29, height: 29)
                         .foregroundColor(.white)
                 }
+                .padding(.trailing, 10)
             }
             .padding(.trailing, 20)
             .padding(.bottom, 20)
@@ -270,7 +274,7 @@ struct IncomingMessageView: View {
             .padding(.leading, !hasMedia ? 16 : 0)
         }
         .background(Color(hex: "#1F2023"))
-        .cornerRadius(40)
+        .cornerRadius(24)
         .frame(maxWidth: hasMedia ? maxWidth : nil)
         .fixedSize(horizontal: !hasMedia, vertical: false)
         .frame(maxWidth: maxWidth, alignment: .leading)
@@ -304,6 +308,7 @@ struct MainScreenView: View {
     var onOpenSettings: (() -> Void)? = nil
     var onFirstMessageSent: (() -> Void)? = nil
     var onDeleteChat: (() -> Void)? = nil
+    var onPlusTapped: (() -> Void)? = nil
     
     @State private var chatEffectsSelection = 0 // 0 = chat, 1 = effects
     @State private var photoVideoSelection = 0 // 0 = photo, 1 = video
@@ -326,6 +331,7 @@ struct MainScreenView: View {
     @State private var shareItem: ShareableItem?
     @State private var showSaveError = false
     @State private var saveErrorText = ""
+    @State private var regeneratingMessageId: UUID?
     
     var body: some View {
         ZStack {
@@ -666,7 +672,7 @@ struct MainScreenView: View {
                 .cornerRadius(12)
                 
                 if chatEffectsSelection == 0 {
-                    Button(action: {}) {
+                    Button(action: { onPlusTapped?() }) {
                         Image("plus")
                             .resizable()
                             .scaledToFit()
@@ -784,7 +790,7 @@ struct MainScreenView: View {
     }
     
     private func regenerateIncomingMessage(_ message: Message) {
-        guard !isLoadingResponse else { return }
+        guard !isLoadingResponse, regeneratingMessageId == nil else { return }
         guard let idx = messages.firstIndex(where: { $0.id == message.id }), idx > 0 else {
             generationError = "Cannot find prompt for this message."
             showGenerationErrorAlert = true
@@ -803,19 +809,19 @@ struct MainScreenView: View {
             return
         }
         let promptImage = previous.image
-        isLoadingResponse = true
+        regeneratingMessageId = message.id
         generationTask = Task {
             do {
                 let (resultImage, resultText) = try await GenerationService.shared.runNanobananaAndLoadImage(prompt: prompt, image: promptImage)
                 await MainActor.run {
                     let newIncoming = Message(text: resultText ?? "", image: resultImage, videoURL: nil, isIncoming: true)
                     messages = messages.prefix(idx) + [newIncoming] + messages.suffix(from: idx + 1)
-                    isLoadingResponse = false
+                    regeneratingMessageId = nil
                     generationTask = nil
                 }
             } catch is CancellationError {
                 await MainActor.run {
-                    isLoadingResponse = false
+                    regeneratingMessageId = nil
                     generationTask = nil
                 }
             } catch {
@@ -823,7 +829,7 @@ struct MainScreenView: View {
                 await MainActor.run {
                     generationError = errMessage
                     showGenerationErrorAlert = true
-                    isLoadingResponse = false
+                    regeneratingMessageId = nil
                     generationTask = nil
                 }
             }
@@ -836,6 +842,7 @@ struct MainScreenView: View {
             MessagesListView(
                 messages: messages,
                 isLoadingResponse: isLoadingResponse,
+                regeneratingMessageId: regeneratingMessageId,
                 imageToView: $imageToView,
                 onDeleteMessage: { id in
                     messages = messages.filter { $0.id != id }
@@ -852,7 +859,7 @@ struct MainScreenView: View {
         VStack(spacing: 2) {
             textFieldContainer
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, 35)
         .padding(.bottom, 34)
         .sheet(isPresented: $showAddPhotoSheet) {
             AddPhotoBottomSheet(selectedImage: $selectedImage)
@@ -894,8 +901,9 @@ struct MainScreenView: View {
                             // TextField
                             TextField("", text: $textFieldText, prompt: Text("Type here").foregroundColor(.white))
                                 .font(.system(size: 17, weight: .regular))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 16)
+                                .foregroundColor(Color.white.opacity(0.5))
+                
+                                .padding(.horizontal, 0)
                                 .padding(.vertical, 12)
                                 .background(Color.clear)
                                 .cornerRadius(12)
@@ -1044,6 +1052,7 @@ struct MainScreenView: View {
 struct MessagesListView: View {
     let messages: [Message]
     let isLoadingResponse: Bool
+    let regeneratingMessageId: UUID?
     @Binding var imageToView: IdentifiableMedia?
     let onDeleteMessage: (UUID) -> Void
     let onDownload: (Message) -> Void
@@ -1051,28 +1060,46 @@ struct MessagesListView: View {
     let onRefresh: (Message) -> Void
     let geometry: GeometryProxy
     
+    private var loadingPlaceholder: some View {
+        HStack {
+            ZStack {
+                RoundedRectangle(cornerRadius: 25)
+                    .fill(Color(hex: "#1F2023"))
+                    .frame(width: 72, height: 72)
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    .frame(width: 32, height: 32)
+            }
+            Spacer()
+        }
+    }
+    
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 12) {
                 ForEach(messages, id: \.id) { (message: Message) in
                     if message.isIncoming == true {
-                                    // Входящее сообщение (слева)
+                                    // Входящее сообщение (слева) или ProgressView при refresh
                                     HStack {
-                                        IncomingMessageView(
-                                            message: message,
-                                            maxWidth: geometry.size.width * 0.6,
-                                            onTrash: { onDeleteMessage(message.id) },
-                                            onDownload: { onDownload(message) },
-                                            onShare: { onShare(message) },
-                                            onRefresh: { onRefresh(message) },
-                                            onMediaTap: {
-                                                if let image = message.image {
-                                                    imageToView = IdentifiableMedia(image: image)
-                                                } else if let url = message.videoURL {
-                                                    imageToView = IdentifiableMedia(videoURL: url)
+                                        if message.id == regeneratingMessageId {
+                                            loadingPlaceholder
+                                        } else {
+                                            IncomingMessageView(
+                                                message: message,
+                                                maxWidth: geometry.size.width * 0.6,
+                                                onTrash: { onDeleteMessage(message.id) },
+                                                onDownload: { onDownload(message) },
+                                                onShare: { onShare(message) },
+                                                onRefresh: { onRefresh(message) },
+                                                onMediaTap: {
+                                                    if let image = message.image {
+                                                        imageToView = IdentifiableMedia(image: image)
+                                                    } else if let url = message.videoURL {
+                                                        imageToView = IdentifiableMedia(videoURL: url)
+                                                    }
                                                 }
-                                            }
-                                        )
+                                            )
+                                        }
                                         Spacer()
                                     }
                                     .padding(.horizontal, 40)
@@ -1319,13 +1346,13 @@ struct VideoPreviewView: View {
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: 120)
                     .clipped()
-                    .cornerRadius(25)
+                    .cornerRadius(20)
             } else {
                 Rectangle()
                     .fill(Color(hex: "#2A2A2A"))
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: 120)
-                    .cornerRadius(25)
+                    .cornerRadius(20)
             }
             Image(systemName: "play.circle.fill")
                 .font(.system(size: 48))
@@ -1529,7 +1556,7 @@ struct DeleteChatAlertView: View {
 
 // Алерт переименования чата
 struct RenameChatAlertView: View {
-    let chat: Chat
+    let title: String
     @Binding var text: String
     let onCancel: () -> Void
     let onOK: (String) -> Void
