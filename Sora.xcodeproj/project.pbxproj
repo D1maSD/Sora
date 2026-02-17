@@ -267,6 +267,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "This app will be able to send you messages in your notification center";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Save generated images and videos to your photo library";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "This app will be able to send you messages in your notification center";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -296,6 +297,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "This app will be able to send you messages in your notification center";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Save generated images and videos to your photo library";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "This app will be able to send you messages in your notification center";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

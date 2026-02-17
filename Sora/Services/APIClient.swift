@@ -7,11 +7,28 @@
 
 import Foundation
 
-enum APIError: Error {
+enum APIError: Error, LocalizedError {
     case invalidURL
     case noData
     case httpStatus(Int, Data?)
     case decoding(Error)
+    
+    var errorDescription: String? {
+        switch self {
+        case .invalidURL:
+            return "Invalid request URL."
+        case .noData:
+            return "No data received from server."
+        case .httpStatus(let code, let data):
+            let body = data.flatMap { String(data: $0, encoding: .utf8) }.flatMap { $0.isEmpty ? nil : $0 }
+            if let body = body, !body.isEmpty {
+                return "Server error (\(code)): \(body)"
+            }
+            return "Server error (\(code))."
+        case .decoding(let error):
+            return "Invalid server response: \(error.localizedDescription)"
+        }
+    }
 }
 
 final class APIClient {
@@ -80,6 +97,59 @@ final class APIClient {
         var req = try makeRequest(path: path, method: "GET", useAuth: useAuth)
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         let (data, response) = try await session.data(for: req)
+        try checkStatus(data: data, response: response)
+        let decoder = JSONDecoder()
+        return try decoder.decode(T.self, from: data)
+    }
+    
+    /// GET and return raw Data (e.g. for file download).
+    func getData(_ path: String, useAuth: Bool = true) async throws -> Data {
+        guard let url = URL(string: baseURL + path) else { throw APIError.invalidURL }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        if useAuth, let token = keychain.getToken() {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        let (data, response) = try await session.data(for: request)
+        try checkStatus(data: data, response: response)
+        return data
+    }
+    
+    /// POST multipart/form-data. Form fields + optional image (single image, key "images").
+    func postMultipart<T: Decodable>(
+        _ path: String,
+        formFields: [String: String],
+        image: (data: Data, filename: String, mimeType: String)? = nil,
+        useAuth: Bool = true
+    ) async throws -> T {
+        let boundary = "Boundary-\(UUID().uuidString)"
+        var body = Data()
+        for (key, value) in formFields {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(key)\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(value)\r\n".data(using: .utf8)!)
+        }
+        if let img = image {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"images[]\"; filename=\"\(img.filename)\"\r\n".data(using: .utf8)!)
+            body.append("Content-Type: \(img.mimeType)\r\n\r\n".data(using: .utf8)!)
+            body.append(img.data)
+            body.append("\r\n".data(using: .utf8)!)
+        }
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+        
+        guard let url = URL(string: baseURL + path) else { throw APIError.invalidURL }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("\(body.count)", forHTTPHeaderField: "Content-Length")
+        if useAuth, let token = keychain.getToken() {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        request.httpBody = body
+        
+        let (data, response) = try await session.data(for: request)
         try checkStatus(data: data, response: response)
         let decoder = JSONDecoder()
         return try decoder.decode(T.self, from: data)

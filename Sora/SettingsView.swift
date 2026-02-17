@@ -11,6 +11,10 @@ struct SettingsView: View {
     @State private var notificationsEnabled = false
     @State private var showNotificationsAlert = false
     
+    private var currentUserId: String? {
+        KeychainStorage.shared.getUserId()
+    }
+    
     var body: some View {
         ZStack {
             Image("phone")
@@ -24,6 +28,7 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 24) {
                         supportUsSection
                         purchasesSection
+                        userIdSection
                         infoLegalSection
                     }
                     .padding(.bottom, 40)
@@ -118,6 +123,44 @@ struct SettingsView: View {
             settingsRowWithToggle(icon: "bageBlue", title: "Notifications", isOn: $notificationsEnabled)
             settingsRow(icon: "trashBlue", title: "Clear cache", trailing: "5 MB")
             settingsRow(icon: "cloudBlue", title: "Restore purchases")
+        }
+    }
+    
+    private var userIdSection: some View {
+        settingsSection(title: "Account") {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("User ID (send to support to get tokens)")
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundColor(.white.opacity(0.7))
+                    .padding(.horizontal, 10)
+                if let id = currentUserId {
+                    HStack(spacing: 12) {
+                        Text(id)
+                            .font(.system(size: 13, weight: .regular))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Spacer(minLength: 8)
+                        Button(action: {
+                            UIPasteboard.general.string = id
+                        }) {
+                            Text("Copy")
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundColor(Color(hex: "#2F76BC"))
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 10)
+                    .background(Color.black.opacity(0.7))
+                    .cornerRadius(12)
+                } else {
+                    Text("Not signed in")
+                        .font(.system(size: 15, weight: .regular))
+                        .foregroundColor(.white.opacity(0.6))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 10)
+                }
+            }
         }
     }
     

@@ -8,6 +8,7 @@
 import SwiftUI
 import AVKit
 import AVFoundation
+import Photos
 
 // Обёртка для показа изображения или видео в fullScreenCover(item:)
 struct IdentifiableMedia: Identifiable {
@@ -19,6 +20,28 @@ struct IdentifiableMedia: Identifiable {
         self.image = image
         self.videoURL = videoURL
     }
+}
+
+// Для системного шаринга (UIActivityViewController)
+struct ShareableItem: Identifiable {
+    let id = UUID()
+    let image: UIImage?
+    let videoURL: URL?
+    var activityItems: [Any] {
+        var items: [Any] = []
+        if let image = image { items.append(image) }
+        if let url = videoURL { items.append(url) }
+        return items
+    }
+}
+
+struct ShareSheet: UIViewControllerRepresentable {
+    let activityItems: [Any]
+    
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+    }
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 // Модель чата для History
@@ -297,6 +320,12 @@ struct MainScreenView: View {
     @State private var showDeleteChatAlert = false
     @State private var scrollBannerId: Int? = 0
     @State private var showEffectsList = false
+    @State private var generationTask: Task<Void, Never>?
+    @State private var generationError: String?
+    @State private var showGenerationErrorAlert = false
+    @State private var shareItem: ShareableItem?
+    @State private var showSaveError = false
+    @State private var saveErrorText = ""
     
     var body: some View {
         ZStack {
@@ -333,6 +362,28 @@ struct MainScreenView: View {
         }
         .fullScreenCover(isPresented: $showEffectsList) {
             EffectsListView(onBack: { showEffectsList = false })
+        }
+        .onDisappear {
+            generationTask?.cancel()
+        }
+        .alert("Generation failed", isPresented: $showGenerationErrorAlert) {
+            Button("OK", role: .cancel) {
+                generationError = nil
+            }
+        } message: {
+            if let err = generationError {
+                Text(err)
+            }
+        }
+        .alert("Save failed", isPresented: $showSaveError) {
+            Button("OK", role: .cancel) { saveErrorText = "" }
+        } message: {
+            Text(saveErrorText)
+        }
+        .sheet(item: $shareItem) { item in
+            if !item.activityItems.isEmpty {
+                ShareSheet(activityItems: item.activityItems)
+            }
         }
     }
     
@@ -634,6 +685,151 @@ struct MainScreenView: View {
     }
     
     
+    private func sendMessageTapped() {
+        guard !isLoadingResponse else { return }
+        if photoVideoSelection != 0 {
+            generationError = "Video generation will be available later."
+            showGenerationErrorAlert = true
+            return
+        }
+        let messageText = textFieldText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !messageText.isEmpty else { return }
+        let messageImage = selectedImage
+        let newMessage = Message(text: messageText, image: messageImage, videoURL: nil, isIncoming: false)
+        let wasEmpty = messages.isEmpty
+        messages = messages + [newMessage]
+        if wasEmpty { onFirstMessageSent?() }
+        textFieldText = ""
+        selectedImage = nil
+        imageFileName = ""
+        isLoadingResponse = true
+        generationTask = Task {
+            do {
+                let (resultImage, resultText) = try await GenerationService.shared.runNanobananaAndLoadImage(prompt: messageText, image: messageImage)
+                await MainActor.run {
+                    let incoming = Message(text: resultText ?? "", image: resultImage, videoURL: nil, isIncoming: true)
+                    messages = messages + [incoming]
+                    isLoadingResponse = false
+                    generationTask = nil
+                }
+            } catch is CancellationError {
+                await MainActor.run {
+                    isLoadingResponse = false
+                    generationTask = nil
+                }
+            } catch {
+                let errMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                print("[Generation] Error: \(error)")
+                print("[Generation] \(errMessage)")
+                await MainActor.run {
+                    generationError = errMessage
+                    showGenerationErrorAlert = true
+                    isLoadingResponse = false
+                    generationTask = nil
+                }
+            }
+        }
+    }
+    
+    private func saveMessageToGallery(_ message: Message) {
+        if let image = message.image {
+            PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+                guard status == .authorized || status == .limited else {
+                    DispatchQueue.main.async {
+                        saveErrorText = "Photo library access denied."
+                        showSaveError = true
+                    }
+                    return
+                }
+                PHPhotoLibrary.shared().performChanges {
+                    PHAssetChangeRequest.creationRequestForAsset(from: image)
+                } completionHandler: { success, error in
+                    DispatchQueue.main.async {
+                        if !success {
+                            saveErrorText = error?.localizedDescription ?? "Failed to save image."
+                            showSaveError = true
+                        }
+                    }
+                }
+            }
+        } else if let videoURL = message.videoURL {
+            PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+                guard status == .authorized || status == .limited else {
+                    DispatchQueue.main.async {
+                        saveErrorText = "Photo library access denied."
+                        showSaveError = true
+                    }
+                    return
+                }
+                PHPhotoLibrary.shared().performChanges {
+                    PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: videoURL)
+                } completionHandler: { success, error in
+                    DispatchQueue.main.async {
+                        if !success {
+                            saveErrorText = error?.localizedDescription ?? "Failed to save video."
+                            showSaveError = true
+                        }
+                    }
+                }
+            }
+        } else {
+            saveErrorText = "No image or video to save."
+            showSaveError = true
+        }
+    }
+    
+    private func shareMessage(_ message: Message) {
+        guard message.image != nil || message.videoURL != nil else { return }
+        shareItem = ShareableItem(image: message.image, videoURL: message.videoURL)
+    }
+    
+    private func regenerateIncomingMessage(_ message: Message) {
+        guard !isLoadingResponse else { return }
+        guard let idx = messages.firstIndex(where: { $0.id == message.id }), idx > 0 else {
+            generationError = "Cannot find prompt for this message."
+            showGenerationErrorAlert = true
+            return
+        }
+        let previous = messages[idx - 1]
+        guard !previous.isIncoming else {
+            generationError = "Previous message is not a prompt."
+            showGenerationErrorAlert = true
+            return
+        }
+        let prompt = previous.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prompt.isEmpty else {
+            generationError = "Prompt is empty."
+            showGenerationErrorAlert = true
+            return
+        }
+        let promptImage = previous.image
+        isLoadingResponse = true
+        generationTask = Task {
+            do {
+                let (resultImage, resultText) = try await GenerationService.shared.runNanobananaAndLoadImage(prompt: prompt, image: promptImage)
+                await MainActor.run {
+                    let newIncoming = Message(text: resultText ?? "", image: resultImage, videoURL: nil, isIncoming: true)
+                    messages = messages.prefix(idx) + [newIncoming] + messages.suffix(from: idx + 1)
+                    isLoadingResponse = false
+                    generationTask = nil
+                }
+            } catch is CancellationError {
+                await MainActor.run {
+                    isLoadingResponse = false
+                    generationTask = nil
+                }
+            } catch {
+                let errMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                await MainActor.run {
+                    generationError = errMessage
+                    showGenerationErrorAlert = true
+                    isLoadingResponse = false
+                    generationTask = nil
+                }
+            }
+        }
+    }
+    
     // Область для отображения сообщений
     private var messagesSection: some View {
         GeometryReader { geometry in
@@ -644,6 +840,9 @@ struct MainScreenView: View {
                 onDeleteMessage: { id in
                     messages = messages.filter { $0.id != id }
                 },
+                onDownload: saveMessageToGallery,
+                onShare: shareMessage,
+                onRefresh: regenerateIncomingMessage,
                 geometry: geometry
             )
         }
@@ -822,45 +1021,7 @@ struct MainScreenView: View {
                         
                         // Кнопка top_arrow - появляется когда есть текст
                         if !textFieldText.isEmpty {
-                            Button(action: {
-                                // Сохраняем данные перед очисткой
-                                let messageText = textFieldText
-                                let messageImage = selectedImage
-                                
-                                // Создание нового исходящего сообщения
-                                let newMessage = Message(
-                                    text: messageText,
-                                    image: messageImage,
-                                    videoURL: nil,
-                                    isIncoming: false
-                                )
-                                let wasEmpty = messages.isEmpty
-                                messages = messages + [newMessage]
-                                if wasEmpty { onFirstMessageSent?() }
-                                
-                                // Очистка полей
-                                textFieldText = ""
-                                selectedImage = nil
-                                imageFileName = ""
-                                
-                                // Показываем loading
-                                isLoadingResponse = true
-                                
-                                // Через 2 секунды скрываем loading и показываем входящее сообщение
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                                    isLoadingResponse = false
-                                    
-                                    // Создаем входящее сообщение (фото или видео в зависимости от режима)
-                                    let isVideoMode = photoVideoSelection == 1
-                                    let incomingMessage = Message(
-                                        text: "Mock output image",
-                                        image: isVideoMode ? nil : UIImage(named: "fiveScreen"),
-                                        videoURL: isVideoMode ? Bundle.main.url(forResource: "20phone", withExtension: "mp4") : nil,
-                                        isIncoming: true
-                                    )
-                                    messages = messages + [incomingMessage]
-                                }
-                            }) {
+                            Button(action: sendMessageTapped) {
                                 Image("top_arrow")
                                     .resizable()
                                     .scaledToFit()
@@ -885,6 +1046,9 @@ struct MessagesListView: View {
     let isLoadingResponse: Bool
     @Binding var imageToView: IdentifiableMedia?
     let onDeleteMessage: (UUID) -> Void
+    let onDownload: (Message) -> Void
+    let onShare: (Message) -> Void
+    let onRefresh: (Message) -> Void
     let geometry: GeometryProxy
     
     var body: some View {
@@ -897,22 +1061,10 @@ struct MessagesListView: View {
                                         IncomingMessageView(
                                             message: message,
                                             maxWidth: geometry.size.width * 0.6,
-                                            onTrash: {
-                                                // Удаление сообщения
-                                                onDeleteMessage(message.id)
-                                            },
-                                            onDownload: {
-                                                // Скачивание
-                                                // TODO: Реализовать скачивание
-                                            },
-                                            onShare: {
-                                                // Поделиться
-                                                // TODO: Реализовать шаринг
-                                            },
-                                            onRefresh: {
-                                                // Обновить
-                                                // TODO: Реализовать обновление
-                                            },
+                                            onTrash: { onDeleteMessage(message.id) },
+                                            onDownload: { onDownload(message) },
+                                            onShare: { onShare(message) },
+                                            onRefresh: { onRefresh(message) },
                                             onMediaTap: {
                                                 if let image = message.image {
                                                     imageToView = IdentifiableMedia(image: image)
@@ -1290,7 +1442,7 @@ struct ImageViewer: View {
             }
         }
         .sheet(isPresented: $showShareSheet) {
-            ShareSheet(items: shareItems)
+            ShareSheet(activityItems: shareItems)
         }
     }
     
@@ -1303,17 +1455,6 @@ struct ImageViewer: View {
         }
         return []
     }
-}
-
-// Системный share sheet
-struct ShareSheet: UIViewControllerRepresentable {
-    let items: [Any]
-    
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
-    }
-    
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 // Цвет разделителей алертов (на 20% тоньше: 1pt → 0.8)
