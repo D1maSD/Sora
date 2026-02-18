@@ -319,6 +319,7 @@ struct MainScreenView: View {
     @State private var textFieldText = ""
     @State private var showAddPhotoSheet = false
     @State private var selectedImage: UIImage? = nil
+    @State private var selectedVideoURL: URL? = nil
     @State private var imageFileName: String = ""
     @State private var isLoadingImage: Bool = false
     @State private var isLoadingResponse: Bool = false
@@ -341,6 +342,7 @@ struct MainScreenView: View {
     @State private var effectsLoading = false
     @State private var videoLoading = false
     @State private var effectCategoryForSeeAll: EffectCategoryPayload?
+    @State private var effectPreviewPayload: EffectPreviewPayload?
     
     var body: some View {
         ZStack {
@@ -384,6 +386,14 @@ struct MainScreenView: View {
                 effects: payload.effects,
                 videos: payload.videos,
                 onBack: { effectCategoryForSeeAll = nil }
+            )
+        }
+        .fullScreenCover(item: $effectPreviewPayload) { payload in
+            EffectPreviewView(
+                onBack: { effectPreviewPayload = nil },
+                effectItems: payload.items,
+                selectedEffectIndex: payload.selectedIndex,
+                isVideo: payload.isVideo
             )
         }
         .onDisappear {
@@ -558,25 +568,31 @@ struct MainScreenView: View {
             let cellHeight = cellWidth * 1.4 * 1.25
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
-                    ForEach(effects, id: \.id) { effect in
-                        ZStack(alignment: .bottomLeading) {
-                            CachedAsyncImage(
-                                urlString: effect.preview,
-                                failure: { AnyView(Rectangle().fill(Color(hex: "#2B2D30")).overlay(Image(systemName: "photo").foregroundColor(.white.opacity(0.5)))) }
-                            )
-                            .frame(width: cellWidth, height: cellHeight)
-                            .clipped()
-                            .cornerRadius(12)
-                            if let t = effect.title, !t.isEmpty {
-                                Text(t)
-                                    .font(.system(size: 15, weight: .medium))
-                                    .foregroundColor(.white)
-                                    .lineLimit(1)
-                                    .padding(.leading, 10)
-                                    .padding(.bottom, 10)
+                    ForEach(Array(effects.enumerated()), id: \.element.id) { index, effect in
+                        Button(action: {
+                            let items = effects.map { EffectPreviewItem(id: $0.id, previewURL: $0.preview, title: $0.title) }
+                            effectPreviewPayload = EffectPreviewPayload(items: items, selectedIndex: index, isVideo: false)
+                        }) {
+                            ZStack(alignment: .bottomLeading) {
+                                CachedAsyncImage(
+                                    urlString: effect.preview,
+                                    failure: { AnyView(Rectangle().fill(Color(hex: "#2B2D30")).overlay(Image(systemName: "photo").foregroundColor(.white.opacity(0.5)))) }
+                                )
+                                .frame(width: cellWidth, height: cellHeight)
+                                .clipped()
+                                .cornerRadius(12)
+                                if let t = effect.title, !t.isEmpty {
+                                    Text(t)
+                                        .font(.system(size: 15, weight: .medium))
+                                        .foregroundColor(.white)
+                                        .lineLimit(1)
+                                        .padding(.leading, 10)
+                                        .padding(.bottom, 10)
+                                }
                             }
+                            .frame(width: cellWidth, height: cellHeight)
                         }
-                        .frame(width: cellWidth, height: cellHeight)
+                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal, 20)
@@ -605,34 +621,40 @@ struct MainScreenView: View {
             let cellHeight = cellWidth * 1.4 * 1.25
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
-                    ForEach(videos, id: \.id) { video in
-                        ZStack(alignment: .bottomLeading) {
-                            CachedAsyncImage(
-                                urlString: video.photo_preview,
-                                failure: { AnyView(Rectangle().fill(Color(hex: "#2B2D30")).overlay(Image(systemName: "video").foregroundColor(.white.opacity(0.5)))) }
-                            )
-                            .frame(width: cellWidth, height: cellHeight)
-                            .clipped()
-                            .cornerRadius(12)
-                            VStack(alignment: .leading, spacing: 4) {
-                                if video.is_new == true {
-                                    Text("NEW")
-                                        .font(.system(size: 11, weight: .bold))
-                                        .foregroundColor(.black)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(Color.white)
-                                        .cornerRadius(4)
+                    ForEach(Array(videos.enumerated()), id: \.element.id) { index, video in
+                        Button(action: {
+                            let items = videos.map { EffectPreviewItem(id: $0.id, previewURL: $0.photo_preview, title: $0.title) }
+                            effectPreviewPayload = EffectPreviewPayload(items: items, selectedIndex: index, isVideo: true)
+                        }) {
+                            ZStack(alignment: .bottomLeading) {
+                                CachedAsyncImage(
+                                    urlString: video.photo_preview,
+                                    failure: { AnyView(Rectangle().fill(Color(hex: "#2B2D30")).overlay(Image(systemName: "video").foregroundColor(.white.opacity(0.5)))) }
+                                )
+                                .frame(width: cellWidth, height: cellHeight)
+                                .clipped()
+                                .cornerRadius(12)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    if video.is_new == true {
+                                        Text("NEW")
+                                            .font(.system(size: 11, weight: .bold))
+                                            .foregroundColor(.black)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(Color.white)
+                                            .cornerRadius(4)
+                                    }
+                                    Text(video.title)
+                                        .font(.system(size: 15, weight: .medium))
+                                        .foregroundColor(.white)
+                                        .lineLimit(1)
                                 }
-                                Text(video.title)
-                                    .font(.system(size: 15, weight: .medium))
-                                    .foregroundColor(.white)
-                                    .lineLimit(1)
+                                .padding(.leading, 10)
+                                .padding(.bottom, 10)
                             }
-                            .padding(.leading, 10)
-                            .padding(.bottom, 10)
+                            .frame(width: cellWidth, height: cellHeight)
                         }
-                        .frame(width: cellWidth, height: cellHeight)
+                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal, 20)
@@ -1000,7 +1022,11 @@ struct MainScreenView: View {
         .padding(.horizontal, 35)
         .padding(.bottom, 34)
         .sheet(isPresented: $showAddPhotoSheet) {
-            AddPhotoBottomSheet(selectedImage: $selectedImage)
+            AddPhotoBottomSheet(
+                selectedImage: $selectedImage,
+                selectedVideoURL: $selectedVideoURL,
+                mode: photoVideoSelection == 1 ? .video : .photo
+            )
                 .presentationDetents([.fraction(0.8)])
                 .presentationDragIndicator(.visible)
                 .interactiveDismissDisabled(false)

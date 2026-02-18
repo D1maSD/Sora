@@ -8,15 +8,28 @@
 import SwiftUI
 import AVFoundation
 import Photos
+import PhotosUI
+import UniformTypeIdentifiers
+
+enum AddPhotoSheetMode {
+    case photo
+    case video
+}
 
 struct AddPhotoBottomSheet: View {
     @Binding var selectedImage: UIImage?
+    @Binding var selectedVideoURL: URL?
+    var mode: AddPhotoSheetMode = .photo
     @Environment(\.dismiss) var dismiss
     
     @State private var showCamera = false
     @State private var showGallery = false
     @State private var showCameraPermissionAlert = false
     @State private var showGalleryPermissionAlert = false
+    
+    private var isVideoMode: Bool { mode == .video }
+    private var headerTitle: String { isVideoMode ? "Add video" : "Add photo" }
+    private var takeButtonTitle: String { isVideoMode ? "Take a video" : "Take a photo" }
     
     var body: some View {
         ZStack {
@@ -26,7 +39,7 @@ struct AddPhotoBottomSheet: View {
             ScrollView {
                 VStack(spacing: 0) {
                     // Заголовок
-                    Text("Add photo")
+                    Text(headerTitle)
                         .font(.system(size: 20, weight: .bold))
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity, alignment: .center)
@@ -110,11 +123,10 @@ struct AddPhotoBottomSheet: View {
                     
                     // Кнопки внизу - в одном HStack
                     HStack(spacing: 12) {
-                        // Кнопка "Take a photo"
                         Button(action: {
                             checkCameraPermission()
                         }) {
-                            Text("Take a photo")
+                            Text(takeButtonTitle)
                                 .font(.system(size: 17, weight: .regular))
                                 .foregroundColor(Color(hex: "#2F76BC"))
                                 .frame(maxWidth: .infinity)
@@ -123,7 +135,6 @@ struct AddPhotoBottomSheet: View {
                                 .cornerRadius(28)
                         }
                         
-                        // Кнопка "Take from gallery" с градиентом
                         Button(action: {
                             checkGalleryPermission()
                         }) {
@@ -151,10 +162,18 @@ struct AddPhotoBottomSheet: View {
             }
         }
         .sheet(isPresented: $showCamera) {
-            ImagePicker(selectedImage: $selectedImage, isPresented: $showCamera, sourceType: .camera)
+            if isVideoMode {
+                VideoCameraPicker(selectedVideoURL: $selectedVideoURL, isPresented: $showCamera)
+            } else {
+                ImagePicker(selectedImage: $selectedImage, isPresented: $showCamera, sourceType: .camera)
+            }
         }
         .sheet(isPresented: $showGallery) {
-            ImagePicker(selectedImage: $selectedImage, isPresented: $showGallery, sourceType: .photoLibrary)
+            if isVideoMode {
+                VideoGalleryPicker(selectedVideoURL: $selectedVideoURL, isPresented: $showGallery)
+            } else {
+                ImagePicker(selectedImage: $selectedImage, isPresented: $showGallery, sourceType: .photoLibrary)
+            }
         }
         .alert("Camera Access", isPresented: $showCameraPermissionAlert) {
             Button("Settings") {
@@ -164,7 +183,7 @@ struct AddPhotoBottomSheet: View {
             }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("Please allow camera access in Settings to take photos.")
+            Text(isVideoMode ? "Please allow camera access in Settings to record videos." : "Please allow camera access in Settings to take photos.")
         }
         .alert("Photo Library Access", isPresented: $showGalleryPermissionAlert) {
             Button("Settings") {
@@ -174,12 +193,13 @@ struct AddPhotoBottomSheet: View {
             }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("Please allow photo library access in Settings to select photos.")
+            Text(isVideoMode ? "Please allow photo library access in Settings to select videos." : "Please allow photo library access in Settings to select photos.")
         }
-        .onChange(of: selectedImage) { newImage in
-            if newImage != nil {
-                dismiss()
-            }
+        .onChange(of: selectedImage) { _, newImage in
+            if newImage != nil { dismiss() }
+        }
+        .onChange(of: selectedVideoURL) { _, newURL in
+            if newURL != nil { dismiss() }
         }
     }
     
@@ -224,6 +244,87 @@ struct AddPhotoBottomSheet: View {
     }
 }
 
+// MARK: - Video-only gallery picker (PHPicker .videos)
+struct VideoGalleryPicker: UIViewControllerRepresentable {
+    @Binding var selectedVideoURL: URL?
+    @Binding var isPresented: Bool
+
+    func makeUIViewController(context: Context) -> PHPickerViewController {
+        var config = PHPickerConfiguration()
+        config.filter = .videos
+        config.selectionLimit = 1
+        let picker = PHPickerViewController(configuration: config)
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    class Coordinator: NSObject, PHPickerViewControllerDelegate {
+        let parent: VideoGalleryPicker
+
+        init(_ parent: VideoGalleryPicker) { self.parent = parent }
+
+        func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+            parent.isPresented = false
+            guard let result = results.first else { return }
+            let provider = result.itemProvider
+            guard provider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) else { return }
+            provider.loadFileRepresentation(forTypeIdentifier: UTType.movie.identifier) { [weak self] url, _ in
+                guard let url = url else { return }
+                let tempDir = FileManager.default.temporaryDirectory
+                let destURL = tempDir.appendingPathComponent(url.lastPathComponent)
+                try? FileManager.default.removeItem(at: destURL)
+                try? FileManager.default.copyItem(at: url, to: destURL)
+                DispatchQueue.main.async {
+                    self?.parent.selectedVideoURL = destURL
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Video camera picker (UIImagePickerController camera, video)
+struct VideoCameraPicker: UIViewControllerRepresentable {
+    @Binding var selectedVideoURL: URL?
+    @Binding var isPresented: Bool
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.mediaTypes = [UTType.movie.identifier]
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let parent: VideoCameraPicker
+
+        init(_ parent: VideoCameraPicker) { self.parent = parent }
+
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            parent.isPresented = false
+            if let url = info[.mediaURL] as? URL {
+                let tempDir = FileManager.default.temporaryDirectory
+                let destURL = tempDir.appendingPathComponent(url.lastPathComponent)
+                try? FileManager.default.removeItem(at: destURL)
+                try? FileManager.default.copyItem(at: url, to: destURL)
+                parent.selectedVideoURL = destURL
+            }
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            parent.isPresented = false
+        }
+    }
+}
+
 #Preview {
-    AddPhotoBottomSheet(selectedImage: .constant(nil))
+    AddPhotoBottomSheet(selectedImage: .constant(nil), selectedVideoURL: .constant(nil))
 }

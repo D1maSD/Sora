@@ -21,6 +21,7 @@ struct EffectPreviewView: View {
     @State private var showLottieOverlay: Bool = true
     @State private var showAddPhotoSheet = false
     @State private var selectedImageForEffect: UIImage? = nil
+    @State private var selectedVideoURLForEffect: URL? = nil
     @State private var showProcessingView = false
     @State private var processingProgress: Int = 0
     @State private var showProcessingError = false
@@ -72,7 +73,11 @@ struct EffectPreviewView: View {
             }
         }
         .sheet(isPresented: $showAddPhotoSheet) {
-            AddPhotoBottomSheet(selectedImage: $selectedImageForEffect)
+            AddPhotoBottomSheet(
+                selectedImage: $selectedImageForEffect,
+                selectedVideoURL: $selectedVideoURLForEffect,
+                mode: isVideo ? .video : .photo
+            )
                 .presentationDetents([.fraction(0.8)])
                 .presentationDragIndicator(.visible)
         }
