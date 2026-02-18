@@ -316,6 +316,8 @@ struct MainScreenView: View {
     
     @State private var chatEffectsSelection = 0 // 0 = chat, 1 = effects
     @State private var photoVideoSelection = 0 // 0 = photo, 1 = video
+    @State private var videoResolutionPx: Int = 720 // 720 или 1080
+    @State private var showVideoResolutionMenu = false
     @State private var textFieldText = ""
     @State private var showAddPhotoSheet = false
     @State private var selectedImage: UIImage? = nil
@@ -418,6 +420,50 @@ struct MainScreenView: View {
                 ShareSheet(activityItems: item.activityItems)
             }
         }
+        .overlay {
+            if showVideoResolutionMenu {
+                Color.black.opacity(0.3)
+                    .ignoresSafeArea()
+                    .onTapGesture { showVideoResolutionMenu = false }
+            }
+        }
+    }
+    
+    /// Меню выбора разрешения видео (720px / 1080px), без иконок — только две кнопки. Показывается прямо над кнопкой «720px»/«1080px».
+    private var videoResolutionMenuView: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button(action: {
+                videoResolutionPx = 720
+                showVideoResolutionMenu = false
+            }) {
+                Text("720px")
+                    .font(.system(size: 17, weight: .regular))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+            }
+            .buttonStyle(.plain)
+            
+            Divider()
+                .background(Color.white.opacity(0.2))
+            
+            Button(action: {
+                videoResolutionPx = 1080
+                showVideoResolutionMenu = false
+            }) {
+                Text("1080px")
+                    .font(.system(size: 17, weight: .regular))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(width: 90)
+        .background(Color(hex: "#3C3D40"))
+        .cornerRadius(12)
     }
     
     // Верхняя часть с свитчерами и кнопками
@@ -716,12 +762,13 @@ struct MainScreenView: View {
                 .cornerRadius(12)
                 
                 // Кнопка +
-                Button(action: {}) {
-                    Image("plus")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 32, height: 32)
+                Button(action: {if let onOpenSettings = onOpenSettings {
+                    onOpenSettings()
+                }}) {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 22))
                         .foregroundColor(.white)
+                        .frame(width: 44, height: 44)
                 }
                 .frame(width: plusButtonWidth + 25, height: 51)
                 .background(Color(hex: "#1F2023"))
@@ -758,18 +805,7 @@ struct MainScreenView: View {
             }
             .padding(.leading, sidePadding)
             .padding(.trailing, sidePadding)
-            .overlay(alignment: .topTrailing) {
-                if let onOpenSettings = onOpenSettings {
-                    Button(action: { onOpenSettings() }) {
-                        Image(systemName: "gearshape")
-                            .font(.system(size: 22))
-                            .foregroundColor(.white)
-                            .frame(width: 44, height: 44)
-                    }
-                    .padding(.top, 4)
-                    .padding(.trailing, sidePadding)
-                }
-            }
+            
         }
         .frame(height: 71)
         .padding(.top, 20)
@@ -851,16 +887,59 @@ struct MainScreenView: View {
     }
     
     
+    /// template_id для POST /api/generations/fotobudka/video (можно заменить на выбор пользователя).
+    private let defaultVideoTemplateId = 1
+
     private func sendMessageTapped() {
         guard !isLoadingResponse else { return }
-        if photoVideoSelection != 0 {
-            generationError = "Video generation will be available later."
-            showGenerationErrorAlert = true
-            return
-        }
         let messageText = textFieldText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !messageText.isEmpty else { return }
         let messageImage = selectedImage
+
+        if photoVideoSelection == 1 {
+            // Режим video: нужна фотография для генерации видео
+            guard messageImage != nil else {
+                generationError = "Please add a photo to generate a video."
+                showGenerationErrorAlert = true
+                return
+            }
+            let newMessage = Message(text: messageText, image: messageImage, videoURL: nil, isIncoming: false)
+            let wasEmpty = messages.isEmpty
+            messages = messages + [newMessage]
+            if wasEmpty { onFirstMessageSent?() }
+            textFieldText = ""
+            selectedImage = nil
+            imageFileName = ""
+            isLoadingResponse = true
+            generationTask = Task {
+                do {
+                    let videoURL = try await GenerationService.shared.runVideoGeneration(photo: messageImage!, templateId: defaultVideoTemplateId)
+                    await MainActor.run {
+                        let incoming = Message(text: messageText, image: nil, videoURL: videoURL, isIncoming: true)
+                        messages = messages + [incoming]
+                        isLoadingResponse = false
+                        generationTask = nil
+                    }
+                } catch is CancellationError {
+                    await MainActor.run {
+                        isLoadingResponse = false
+                        generationTask = nil
+                    }
+                } catch {
+                    let errMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                    print("[Generation] Video error: \(error)")
+                    await MainActor.run {
+                        generationError = errMessage
+                        showGenerationErrorAlert = true
+                        isLoadingResponse = false
+                        generationTask = nil
+                    }
+                }
+            }
+            return
+        }
+
+        // Режим photo: nanobanana
         let newMessage = Message(text: messageText, image: messageImage, videoURL: nil, isIncoming: false)
         let wasEmpty = messages.isEmpty
         messages = messages + [newMessage]
@@ -886,7 +965,6 @@ struct MainScreenView: View {
             } catch {
                 let errMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                 print("[Generation] Error: \(error)")
-                print("[Generation] \(errMessage)")
                 await MainActor.run {
                     generationError = errMessage
                     showGenerationErrorAlert = true
@@ -1014,13 +1092,21 @@ struct MainScreenView: View {
             )
         }
     }
-    // Нижняя часть с TextField и кнопками
+    // Нижняя часть с TextField и кнопками; меню 720/1080 — рядом с контейнером, не внутри
     private var bottomSection: some View {
-        VStack(spacing: 2) {
-            textFieldContainer
+        ZStack(alignment: .bottomLeading) {
+            VStack(spacing: 2) {
+                textFieldContainer
+            }
+            .padding(.horizontal, 35)
+            .padding(.bottom, 34)
+            
+            if showVideoResolutionMenu {
+                videoResolutionMenuView
+                    .padding(.leading, 60 + 13 + 12)
+                    .padding(.bottom, 13 + 44 + 8)
+            }
         }
-        .padding(.horizontal, 35)
-        .padding(.bottom, 34)
         .sheet(isPresented: $showAddPhotoSheet) {
             AddPhotoBottomSheet(
                 selectedImage: $selectedImage,
@@ -1162,9 +1248,9 @@ struct MainScreenView: View {
                                         .cornerRadius(12)
                                     }
                                 } else {
-                                    // video выбран - показываем 720px
-                                    Button(action: {}) {
-                                        Text("720px")
+                                    // video выбран - выбор 720px / 1080px
+                                    Button(action: { showVideoResolutionMenu = true }) {
+                                        Text("\(videoResolutionPx)px")
                                             .font(.system(size: 17, weight: .regular))
                                             .foregroundColor(.white)
                                             .frame(width: 75, height: 44)
@@ -1611,9 +1697,11 @@ struct ImageViewer: View {
                     }
                     
                     Button(action: {
-                        showShareSheet = true
+                        
+                        saveMediaToGallery()
+                        showContextMenu = false
                     }) {
-                        Text("Share")
+                        Text("Save")
                             .font(.system(size: 17, weight: .regular))
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
@@ -1662,15 +1750,15 @@ struct ImageViewer: View {
     private var imageViewerContextMenu: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button(action: {
-                saveMediaToGallery()
-                showContextMenu = false
+                showShareSheet = true
+                
             }) {
                 HStack(spacing: 12) {
-                    Text("Save to gallery")
+                    Text("Share")
                         .font(.system(size: 17, weight: .regular))
                         .foregroundColor(.white)
                     Spacer()
-                    Image("download")
+                    Image("share")
                         .resizable()
                         .scaledToFit()
                         .frame(width: 30, height: 30)

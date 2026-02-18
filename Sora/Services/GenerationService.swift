@@ -163,4 +163,34 @@ final class GenerationService {
         guard let img = UIImage(data: data) else { throw GenerationError.downloadFailed }
         return img
     }
+
+    // MARK: - Fotobudka Video (photo + template_id → video)
+
+    /// Запуск генерации видео: POST /api/generations/fotobudka/video (photo + template_id).
+    func startVideoGeneration(photo: UIImage, templateId: Int) async throws -> String {
+        guard let jpeg = photo.jpegData(compressionQuality: 0.85) else { throw GenerationError.downloadFailed }
+        let fields: [String: String] = ["template_id": "\(templateId)"]
+        print("[Generation] POST /api/generations/fotobudka/video template_id=\(templateId)")
+        let response: GenerationResponse = try await api.postMultipartPhoto(
+            "/api/generations/fotobudka/video",
+            formFields: fields,
+            photo: (jpeg, "photo.jpg", "image/jpeg"),
+            useAuth: true
+        )
+        print("[Generation] Video started, id: \(response.id), status: \(response.status)")
+        return response.id
+    }
+
+    /// Полный цикл: видео по фото + template_id → polling → скачивание. Возвращает URL файла видео или throws.
+    func runVideoGeneration(photo: UIImage, templateId: Int) async throws -> URL {
+        let id = try await startVideoGeneration(photo: photo, templateId: templateId)
+        let resultOrUrl = try await pollUntilFinished(generationId: id)
+        let data = try await downloadGenerationFile(resultOrUrl: resultOrUrl)
+        let tempDir = FileManager.default.temporaryDirectory
+        let filename = "video_\(id)_\(UUID().uuidString).mp4"
+        let fileURL = tempDir.appendingPathComponent(filename)
+        try data.write(to: fileURL)
+        print("[Generation] Video saved to \(fileURL.path)")
+        return fileURL
+    }
 }
