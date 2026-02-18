@@ -433,10 +433,10 @@ struct MainScreenView: View {
     private var videoResolutionMenuView: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button(action: {
-                videoResolutionPx = 720
-                showVideoResolutionMenu = false
+                videoResolutionPx = 1080
+                DispatchQueue.main.async { showVideoResolutionMenu = false }
             }) {
-                Text("720px")
+                Text("1080px")
                     .font(.system(size: 17, weight: .regular))
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -449,10 +449,11 @@ struct MainScreenView: View {
                 .background(Color.white.opacity(0.2))
             
             Button(action: {
-                videoResolutionPx = 1080
-                showVideoResolutionMenu = false
+                videoResolutionPx = 720
+                
+                DispatchQueue.main.async { showVideoResolutionMenu = false }
             }) {
-                Text("1080px")
+                Text("720px")
                     .font(.system(size: 17, weight: .regular))
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1251,12 +1252,15 @@ struct MainScreenView: View {
                                     // video выбран - выбор 720px / 1080px
                                     Button(action: { showVideoResolutionMenu = true }) {
                                         Text("\(videoResolutionPx)px")
+                                            .id(videoResolutionPx)
                                             .font(.system(size: 17, weight: .regular))
                                             .foregroundColor(.white)
                                             .frame(width: 75, height: 44)
+                                            .padding(.horizontal, 8)
                                             .background(Color(hex: "#3B3D40"))
                                             .cornerRadius(12)
                                     }
+                                    .buttonStyle(.plain)
                                 }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
