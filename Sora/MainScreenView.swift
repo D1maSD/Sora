@@ -332,6 +332,11 @@ struct MainScreenView: View {
     @State private var showSaveError = false
     @State private var saveErrorText = ""
     @State private var regeneratingMessageId: UUID?
+    @State private var effectsGroups: [EffectsGroupResponse] = []
+    @State private var videoGroups: [VideoTemplatesGroupResponse] = []
+    @State private var effectsLoading = false
+    @State private var videoLoading = false
+    @State private var effectCategoryForSeeAll: EffectCategoryPayload?
     
     var body: some View {
         ZStack {
@@ -369,6 +374,14 @@ struct MainScreenView: View {
         .fullScreenCover(isPresented: $showEffectsList) {
             EffectsListView(onBack: { showEffectsList = false })
         }
+        .fullScreenCover(item: $effectCategoryForSeeAll) { payload in
+            EffectCategoryFullView(
+                title: payload.title,
+                effects: payload.effects,
+                videos: payload.videos,
+                onBack: { effectCategoryForSeeAll = nil }
+            )
+        }
         .onDisappear {
             generationTask?.cancel()
         }
@@ -403,9 +416,16 @@ struct MainScreenView: View {
                     VStack(spacing: 0) {
                         effectsBannerSection
                             .padding(.top, 0)
-                        effectsHotSection
-                        effectsNewSection
+                        effectsDynamicSection
                             .padding(.bottom, 24)
+                    }
+                }
+                .task(id: "effects-\(photoVideoSelection)") {
+                    guard chatEffectsSelection == 1 else { return }
+                    if photoVideoSelection == 0 {
+                        await loadEffects()
+                    } else {
+                        await loadVideoTemplates()
                     }
                 }
             }
@@ -454,7 +474,53 @@ struct MainScreenView: View {
         .frame(height: 220)
     }
     
-    // Секция эффектов с заголовком (Hot / New) и горизонтальной коллекцией 4× effectCard (30% ширины, без paging)
+    /// Динамический контент: Photo — группы эффектов, Video — группы видео-шаблонов
+    private var effectsDynamicSection: some View {
+        Group {
+            if photoVideoSelection == 0 {
+                if effectsLoading {
+                    HStack {
+                        Spacer()
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .padding()
+                        Spacer()
+                    }
+                    .frame(minHeight: 120)
+                } else {
+                    effectsGroupsContent
+                }
+            } else {
+                if videoLoading {
+                    HStack {
+                        Spacer()
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .padding()
+                        Spacer()
+                    }
+                    .frame(minHeight: 120)
+                } else {
+                    videoGroupsContent
+                }
+            }
+        }
+    }
+    
+    private var effectsGroupsContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            ForEach(Array(effectsGroups.enumerated()), id: \.element.id) { _, group in
+                if let title = group.title, !title.isEmpty {
+                    effectsSectionHeader(title: title) {
+                        effectCategoryForSeeAll = EffectCategoryPayload(title: title, effects: group.effects, videos: nil)
+                    }
+                    effectCardsRow(effects: group.effects)
+                }
+            }
+        }
+        .padding(.top, 12)
+    }
+    
     private func effectsSectionHeader(title: String, onSeeAll: @escaping () -> Void) -> some View {
         HStack {
             Text(title)
@@ -482,47 +548,137 @@ struct MainScreenView: View {
         .padding(.horizontal, 30)
     }
     
-    private var effectsHotSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            effectsSectionHeader(title: "Hot", onSeeAll: { showEffectsList = true })
-            effectsCardCollection()
-        }
-    }
-    
-    private var effectsNewSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            effectsSectionHeader(title: "New", onSeeAll: { showEffectsList = true })
-            effectsCardCollection()
-        }
-        .padding(.top, 0)
-    }
-    
-    private func effectsCardCollection() -> some View {
+    private func effectCardsRow(effects: [EffectItemResponse]) -> some View {
         GeometryReader { geometry in
             let cellWidth = geometry.size.width * 0.3
             let cellHeight = cellWidth * 1.4 * 1.25
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
-                    ForEach(0..<4, id: \.self) { _ in
+                    ForEach(effects, id: \.id) { effect in
                         ZStack(alignment: .bottomLeading) {
-                            Image("effectCard")
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: cellWidth, height: cellHeight)
-                            Text("name")
-                                .font(.system(size: 15, weight: .medium))
-                                .foregroundColor(.white)
-                                .padding(.leading, 20)
-                                .padding(.bottom, 10)
+                            AsyncImage(url: URL(string: effect.preview)) { phase in
+                                switch phase {
+                                case .success(let image):
+                                    image
+                                        .resizable()
+                                        .scaledToFill()
+                                case .failure:
+                                    Rectangle()
+                                        .fill(Color(hex: "#2B2D30"))
+                                        .overlay(Image(systemName: "photo").foregroundColor(.white.opacity(0.5)))
+                                default:
+                                    ProgressView()
+                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                }
+                            }
+                            .frame(width: cellWidth, height: cellHeight)
+                            .clipped()
+                            .cornerRadius(12)
+                            if let t = effect.title, !t.isEmpty {
+                                Text(t)
+                                    .font(.system(size: 15, weight: .medium))
+                                    .foregroundColor(.white)
+                                    .lineLimit(1)
+                                    .padding(.leading, 10)
+                                    .padding(.bottom, 10)
+                            }
                         }
                         .frame(width: cellWidth, height: cellHeight)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
                 }
                 .padding(.horizontal, 20)
             }
         }
         .frame(height: 245)
+    }
+    
+    private var videoGroupsContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            ForEach(Array(videoGroups.enumerated()), id: \.element.id) { _, group in
+                if let title = group.title, !title.isEmpty {
+                    effectsSectionHeader(title: title) {
+                        effectCategoryForSeeAll = EffectCategoryPayload(title: title, effects: nil, videos: group.videos)
+                    }
+                    videoCardsRow(videos: group.videos)
+                }
+            }
+        }
+        .padding(.top, 12)
+    }
+    
+    private func videoCardsRow(videos: [VideoTemplateItemResponse]) -> some View {
+        GeometryReader { geometry in
+            let cellWidth = geometry.size.width * 0.3
+            let cellHeight = cellWidth * 1.4 * 1.25
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(videos, id: \.id) { video in
+                        ZStack(alignment: .bottomLeading) {
+                            AsyncImage(url: URL(string: video.photo_preview)) { phase in
+                                switch phase {
+                                case .success(let image):
+                                    image
+                                        .resizable()
+                                        .scaledToFill()
+                                case .failure:
+                                    Rectangle()
+                                        .fill(Color(hex: "#2B2D30"))
+                                        .overlay(Image(systemName: "video").foregroundColor(.white.opacity(0.5)))
+                                default:
+                                    ProgressView()
+                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                }
+                            }
+                            .frame(width: cellWidth, height: cellHeight)
+                            .clipped()
+                            .cornerRadius(12)
+                            VStack(alignment: .leading, spacing: 4) {
+                                if video.is_new == true {
+                                    Text("NEW")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundColor(.black)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.white)
+                                        .cornerRadius(4)
+                                }
+                                Text(video.title)
+                                    .font(.system(size: 15, weight: .medium))
+                                    .foregroundColor(.white)
+                                    .lineLimit(1)
+                            }
+                            .padding(.leading, 10)
+                            .padding(.bottom, 10)
+                        }
+                        .frame(width: cellWidth, height: cellHeight)
+                    }
+                }
+                .padding(.horizontal, 20)
+            }
+        }
+        .frame(height: 245)
+    }
+    
+    private func loadEffects() async {
+        effectsLoading = true
+        effectsGroups = []
+        defer { effectsLoading = false }
+        do {
+            effectsGroups = try await EffectsAPI.fetchEffects()
+        } catch {
+            print("[Effects] load effects error: \(error)")
+        }
+    }
+    
+    private func loadVideoTemplates() async {
+        videoLoading = true
+        videoGroups = []
+        defer { videoLoading = false }
+        do {
+            videoGroups = try await EffectsAPI.fetchVideoTemplates()
+        } catch {
+            print("[Effects] load video templates error: \(error)")
+        }
     }
     
     // Первый ряд: chat/effects свитчер, кнопка +, градиентная кнопка 1000

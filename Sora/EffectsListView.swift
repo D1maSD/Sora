@@ -158,6 +158,207 @@ struct EffectsListView: View {
     }
 }
 
+// MARK: - Элемент для горизонтального слайдера в EffectPreviewView (id = template_id для API)
+
+struct EffectPreviewItem: Identifiable {
+    let id: Int
+    let previewURL: String
+    let title: String?
+}
+
+// MARK: - See All: экран категории с вертикальной сеткой картинок из раздела
+
+struct EffectCategoryPayload: Identifiable {
+    let id = UUID()
+    let title: String
+    let effects: [EffectItemResponse]?
+    let videos: [VideoTemplateItemResponse]?
+}
+
+/// Payload для открытия EffectPreviewView с карточками категории
+struct EffectPreviewPayload: Identifiable {
+    let id = UUID()
+    let items: [EffectPreviewItem]
+    let selectedIndex: Int
+}
+
+struct EffectCategoryFullView: View {
+    let title: String
+    let effects: [EffectItemResponse]?
+    let videos: [VideoTemplateItemResponse]?
+    let onBack: () -> Void
+    
+    @State private var effectPreviewPayload: EffectPreviewPayload?
+    
+    var body: some View {
+        ZStack {
+            Color(hex: "#0D0D0F")
+                .ignoresSafeArea()
+            VStack(spacing: 0) {
+                categoryNavbar
+                categoryGrid
+            }
+        }
+        .fullScreenCover(item: $effectPreviewPayload) { payload in
+            EffectPreviewView(
+                onBack: { effectPreviewPayload = nil },
+                effectItems: payload.items,
+                selectedEffectIndex: payload.selectedIndex
+            )
+        }
+    }
+    
+    private var categoryNavbar: some View {
+        ZStack {
+            HStack {
+                Button(action: onBack) {
+                    Image("chevronLeft")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 32, height: 32)
+                        .foregroundColor(.white)
+                        .frame(width: 48, height: 48)
+                }
+                .background(Color(hex: "#2B2D30"))
+                .cornerRadius(12)
+                Spacer()
+                Button(action: {}) {
+                    HStack(spacing: 6) {
+                        Text("1000")
+                            .font(.system(size: 17, weight: .regular))
+                            .foregroundColor(.white)
+                        Image("sparkles")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 24, height: 24)
+                            .foregroundColor(.white)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color(hex: "#1F2022"))
+                    .cornerRadius(12)
+                }
+            }
+            .padding(.horizontal, 20)
+            Text(title)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+        }
+        .padding(.top, 20)
+        .padding(.bottom, 16)
+    }
+    
+    private var categoryGrid: some View {
+        GeometryReader { geometry in
+            let horizontalPadding: CGFloat = 20
+            let spacing: CGFloat = 12
+            let contentWidth = geometry.size.width - horizontalPadding * 2
+            let cellWidth = (contentWidth - spacing) / 2
+            let cellHeight = cellWidth * 1.4
+            
+            ScrollView(.vertical, showsIndicators: false) {
+                Group {
+                    if let effects = effects {
+                        LazyVGrid(columns: [
+                            GridItem(.fixed(cellWidth), spacing: spacing),
+                            GridItem(.fixed(cellWidth), spacing: spacing)
+                        ], spacing: spacing) {
+                            ForEach(Array(effects.enumerated()), id: \.element.id) { index, effect in
+                                Button(action: {
+                                    let items = effects.map { EffectPreviewItem(id: $0.id, previewURL: $0.preview, title: $0.title) }
+                                    effectPreviewPayload = EffectPreviewPayload(items: items, selectedIndex: index)
+                                }) {
+                                    ZStack(alignment: .bottomLeading) {
+                                        AsyncImage(url: URL(string: effect.preview)) { phase in
+                                        switch phase {
+                                        case .success(let image):
+                                            image.resizable().scaledToFill()
+                                        case .failure:
+                                            Rectangle()
+                                                .fill(Color(hex: "#2B2D30"))
+                                                .overlay(Image(systemName: "photo").foregroundColor(.white.opacity(0.5)))
+                                        default:
+                                            ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                                        }
+                                    }
+                                    .frame(width: cellWidth, height: cellHeight)
+                                    .clipped()
+                                    .cornerRadius(12)
+                                    if let t = effect.title, !t.isEmpty {
+                                        Text(t)
+                                            .font(.system(size: 15, weight: .medium))
+                                            .foregroundColor(.white)
+                                            .lineLimit(1)
+                                            .padding(.leading, 10)
+                                            .padding(.bottom, 10)
+                                    }
+                                }
+                                .frame(width: cellWidth, height: cellHeight)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    } else if let videos = videos {
+                        LazyVGrid(columns: [
+                            GridItem(.fixed(cellWidth), spacing: spacing),
+                            GridItem(.fixed(cellWidth), spacing: spacing)
+                        ], spacing: spacing) {
+                            ForEach(Array(videos.enumerated()), id: \.element.id) { index, video in
+                                Button(action: {
+                                    let items = videos.map { EffectPreviewItem(id: $0.id, previewURL: $0.photo_preview, title: $0.title) }
+                                    effectPreviewPayload = EffectPreviewPayload(items: items, selectedIndex: index)
+                                }) {
+                                    ZStack(alignment: .bottomLeading) {
+                                    AsyncImage(url: URL(string: video.photo_preview)) { phase in
+                                        switch phase {
+                                        case .success(let image):
+                                            image.resizable().scaledToFill()
+                                        case .failure:
+                                            Rectangle()
+                                                .fill(Color(hex: "#2B2D30"))
+                                                .overlay(Image(systemName: "video").foregroundColor(.white.opacity(0.5)))
+                                        default:
+                                            ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                                        }
+                                    }
+                                    .frame(width: cellWidth, height: cellHeight)
+                                    .clipped()
+                                    .cornerRadius(12)
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        if video.is_new == true {
+                                            Text("NEW")
+                                                .font(.system(size: 11, weight: .bold))
+                                                .foregroundColor(.black)
+                                                .padding(.horizontal, 6)
+                                                .padding(.vertical, 2)
+                                                .background(Color.white)
+                                                .cornerRadius(4)
+                                        }
+                                        Text(video.title)
+                                            .font(.system(size: 15, weight: .medium))
+                                            .foregroundColor(.white)
+                                            .lineLimit(1)
+                                    }
+                                    .padding(.leading, 10)
+                                    .padding(.bottom, 10)
+                                }
+                                .frame(width: cellWidth, height: cellHeight)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
+                .frame(width: contentWidth)
+                .padding(.horizontal, horizontalPadding)
+                .padding(.bottom, 40)
+            }
+        }
+        .frame(maxHeight: .infinity)
+    }
+}
+
 #Preview {
     EffectsListView(onBack: {})
 }

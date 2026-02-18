@@ -5,8 +5,15 @@
 
 import SwiftUI
 
+struct IdentifiableImageResult: Identifiable {
+    let id = UUID()
+    let image: UIImage
+}
+
 struct EffectPreviewView: View {
     let onBack: () -> Void
+    var effectItems: [EffectPreviewItem]? = nil
+    var selectedEffectIndex: Int = 0
     
     @State private var showLottieOverlay: Bool = true
     @State private var showAddPhotoSheet = false
@@ -14,12 +21,19 @@ struct EffectPreviewView: View {
     @State private var showProcessingView = false
     @State private var processingProgress: Int = 0
     @State private var showProcessingError = false
+    @State private var resultImageForViewer: IdentifiableImageResult?
+    @State private var scrollBannerId: Int?
     
     private let previewBannerData: [(imageName: String, title: String)] = [
         ("effectCard1", "Effect 1"),
         ("effectCard2", "Effect 2"),
         ("effectCard3", "Effect 3")
     ]
+    
+    private var templateId: Int? {
+        guard let items = effectItems, items.indices.contains(selectedEffectIndex) else { return nil }
+        return items[selectedEffectIndex].id
+    }
     
     var body: some View {
         ZStack {
@@ -55,12 +69,37 @@ struct EffectPreviewView: View {
                 submitImageForProcessing(newImage!)
             }
         }
+        .fullScreenCover(item: $resultImageForViewer) { item in
+            ImageViewer(media: IdentifiableMedia(image: item.image), onDismiss: { resultImageForViewer = nil })
+        }
+        .onAppear {
+            if effectItems != nil {
+                scrollBannerId = selectedEffectIndex
+            } else {
+                scrollBannerId = nil
+            }
+        }
     }
     
-    /// Задел на будущее: отправка изображения в нейросеть Sora для обработки.
     private func submitImageForProcessing(_ image: UIImage) {
-        // TODO: вызов API Sora для генерации видео/эффекта по изображению
-        // Пока только показываем экран обработки; по завершении вызвать showProcessingView = false
+        guard let tid = templateId else {
+            startProgressTimer()
+            return
+        }
+        Task {
+            do {
+                let resultImage = try await GenerationService.shared.runEffectAndLoadImage(photo: image, templateId: tid)
+                await MainActor.run {
+                    showProcessingView = false
+                    selectedImageForEffect = nil
+                    resultImageForViewer = IdentifiableImageResult(image: resultImage)
+                }
+            } catch {
+                await MainActor.run {
+                    showProcessingError = true
+                }
+            }
+        }
     }
     
     private func startProgressTimer() {
@@ -126,7 +165,7 @@ struct EffectPreviewView: View {
     
     private let createButtonHeight: CGFloat = 56
     
-    // Высота ячейки = высота области под navbar (минус кнопка внизу) − 20 сверху − 20 снизу
+    // Баннер: динамические effectItems (из категории) или статичные previewBannerData
     private var previewBannerSection: some View {
         GeometryReader { geometry in
             let availableHeight = geometry.size.height
@@ -139,24 +178,56 @@ struct EffectPreviewView: View {
             
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: spacingBetweenCells) {
-                    ForEach(Array(previewBannerData.enumerated()), id: \.offset) { _, item in
-                        ZStack(alignment: .bottomLeading) {
-                            Image(item.imageName)
-                                .resizable()
-                                .scaledToFill()
+                    if let items = effectItems {
+                        ForEach(Array(items.enumerated()), id: \.element.id) { offset, item in
+                            ZStack(alignment: .bottomLeading) {
+                                AsyncImage(url: URL(string: item.previewURL)) { phase in
+                                    switch phase {
+                                    case .success(let image):
+                                        image.resizable().scaledToFill()
+                                    case .failure:
+                                        Rectangle()
+                                            .fill(Color(hex: "#2B2D30"))
+                                            .overlay(Image(systemName: "photo").foregroundColor(.white.opacity(0.5)))
+                                    default:
+                                        ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    }
+                                }
                                 .frame(width: cellWidth, height: cellHeight)
-                            Text(item.title)
-                                .font(.system(size: 27, weight: .semibold))
-                                .foregroundColor(.white)
-                                .padding(.leading, 20)
-                                .padding(.bottom, 10)
+                                .clipped()
+                                if let t = item.title, !t.isEmpty {
+                                    Text(t)
+                                        .font(.system(size: 27, weight: .semibold))
+                                        .foregroundColor(.white)
+                                        .padding(.leading, 20)
+                                        .padding(.bottom, 10)
+                                }
+                            }
+                            .frame(width: cellWidth, height: cellHeight)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .id(offset)
                         }
-                        .frame(width: cellWidth, height: cellHeight)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    } else {
+                        ForEach(Array(previewBannerData.enumerated()), id: \.offset) { _, item in
+                            ZStack(alignment: .bottomLeading) {
+                                Image(item.imageName)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: cellWidth, height: cellHeight)
+                                Text(item.title)
+                                    .font(.system(size: 27, weight: .semibold))
+                                    .foregroundColor(.white)
+                                    .padding(.leading, 20)
+                                    .padding(.bottom, 10)
+                            }
+                            .frame(width: cellWidth, height: cellHeight)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
                     }
                 }
                 .padding(.horizontal, sidePadding)
             }
+            .scrollPosition(id: $scrollBannerId)
             .scrollTargetBehavior(.viewAligned(limitBehavior: .always))
         }
         .padding(.top, 20)
@@ -235,7 +306,7 @@ struct EffectPreviewView: View {
             .padding(.trailing, 20)
         }
         .onAppear {
-            if !showProcessingError && processingProgress == 0 {
+            if templateId == nil, !showProcessingError, processingProgress == 0 {
                 startProgressTimer()
             }
         }
@@ -248,9 +319,11 @@ struct EffectPreviewView: View {
                 .scaleEffect(2.2)
                 .frame(width: 44, height: 44)
             
-            Text("\(processingProgress)%")
-                .font(.system(size: 17, weight: .regular))
-                .foregroundColor(.white)
+            if templateId == nil {
+                Text("\(processingProgress)%")
+                    .font(.system(size: 17, weight: .regular))
+                    .foregroundColor(.white)
+            }
             
             Text("We create...")
                 .font(.system(size: 27, weight: .regular))

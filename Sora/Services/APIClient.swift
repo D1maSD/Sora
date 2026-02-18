@@ -155,6 +155,44 @@ final class APIClient {
         return try decoder.decode(T.self, from: data)
     }
     
+    /// POST multipart with file under name "photo" (for fotobudka/effect).
+    func postMultipartPhoto<T: Decodable>(
+        _ path: String,
+        formFields: [String: String],
+        photo: (data: Data, filename: String, mimeType: String),
+        useAuth: Bool = true
+    ) async throws -> T {
+        let boundary = "Boundary-\(UUID().uuidString)"
+        var body = Data()
+        for (key, value) in formFields {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(key)\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(value)\r\n".data(using: .utf8)!)
+        }
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"photo\"; filename=\"\(photo.filename)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: \(photo.mimeType)\r\n\r\n".data(using: .utf8)!)
+        body.append(photo.data)
+        body.append("\r\n".data(using: .utf8)!)
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+        
+        guard let url = URL(string: baseURL + path) else { throw APIError.invalidURL }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("\(body.count)", forHTTPHeaderField: "Content-Length")
+        if useAuth, let token = keychain.getToken() {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        request.httpBody = body
+        
+        let (data, response) = try await session.data(for: request)
+        try checkStatus(data: data, response: response)
+        let decoder = JSONDecoder()
+        return try decoder.decode(T.self, from: data)
+    }
+    
     private func checkStatus(data: Data, response: URLResponse) throws {
         guard let http = response as? HTTPURLResponse else { return }
         if http.statusCode == 401 {

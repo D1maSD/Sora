@@ -137,4 +137,30 @@ final class GenerationService {
             throw error
         }
     }
+    
+    // MARK: - Fotobudka Effect (photo + template_id)
+    
+    /// Запуск генерации эффекта: POST /api/generations/fotobudka/effect (photo + template_id).
+    func startEffectGeneration(photo: UIImage, templateId: Int) async throws -> String {
+        guard let jpeg = photo.jpegData(compressionQuality: 0.85) else { throw GenerationError.downloadFailed }
+        let fields: [String: String] = ["template_id": "\(templateId)"]
+        print("[Generation] POST /api/generations/fotobudka/effect template_id=\(templateId)")
+        let response: GenerationResponse = try await api.postMultipartPhoto(
+            "/api/generations/fotobudka/effect",
+            formFields: fields,
+            photo: (jpeg, "photo.jpg", "image/jpeg"),
+            useAuth: true
+        )
+        print("[Generation] Effect started, id: \(response.id), status: \(response.status)")
+        return response.id
+    }
+    
+    /// Полный цикл: эффект по фото + template_id → polling → скачивание. Возвращает UIImage или throws.
+    func runEffectAndLoadImage(photo: UIImage, templateId: Int) async throws -> UIImage {
+        let id = try await startEffectGeneration(photo: photo, templateId: templateId)
+        let resultOrUrl = try await pollUntilFinished(generationId: id)
+        let data = try await downloadGenerationFile(resultOrUrl: resultOrUrl)
+        guard let img = UIImage(data: data) else { throw GenerationError.downloadFailed }
+        return img
+    }
 }
