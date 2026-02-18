@@ -11,6 +11,7 @@ struct ContentView: View {
     @State private var currentChatId: UUID?
     @State private var currentChatMessages: [Message] = []
     @State private var showHistory = false
+    @State private var historyIsEffectsMode = false
     @State private var showSettings = false
     @State private var sessionItems: [ChatSessionItem] = []
     
@@ -21,6 +22,7 @@ struct ContentView: View {
             } else if showHistory {
                 HistoryView(
                     sessions: sessionItems,
+                    isEffectsMode: historyIsEffectsMode,
                     onBack: { showHistory = false },
                     onSelectChat: { item in
                         currentChatId = item.id
@@ -51,7 +53,8 @@ struct ContentView: View {
             } else {
                 MainScreenView(
                     messages: $currentChatMessages,
-                    onOpenHistory: {
+                    onOpenHistory: { isEffectsMode in
+                        historyIsEffectsMode = isEffectsMode
                         showHistory = true
                     },
                     onOpenSettings: { showSettings = true },

@@ -14,7 +14,10 @@ struct EffectPreviewView: View {
     let onBack: () -> Void
     var effectItems: [EffectPreviewItem]? = nil
     var selectedEffectIndex: Int = 0
+    /// true когда карточки из категории видео (для истории в HistoryView)
+    var isVideo: Bool = false
     
+    @ObservedObject private var effectStore = EffectGenerationStore.shared
     @State private var showLottieOverlay: Bool = true
     @State private var showAddPhotoSheet = false
     @State private var selectedImageForEffect: UIImage? = nil
@@ -23,6 +26,8 @@ struct EffectPreviewView: View {
     @State private var showProcessingError = false
     @State private var resultImageForViewer: IdentifiableImageResult?
     @State private var scrollBannerId: Int?
+    /// ID записи в store для текущей генерации (polling продолжается при закрытии оверлея)
+    @State private var currentEffectRecordId: UUID?
     
     private let previewBannerData: [(imageName: String, title: String)] = [
         ("effectCard1", "Effect 1"),
@@ -33,6 +38,16 @@ struct EffectPreviewView: View {
     private var templateId: Int? {
         guard let items = effectItems, items.indices.contains(selectedEffectIndex) else { return nil }
         return items[selectedEffectIndex].id
+    }
+    
+    /// Ключ статуса текущей записи для onChange (реакция на success/error из store).
+    private var currentEffectRecordStatusKey: String? {
+        guard let id = currentEffectRecordId, let rec = effectStore.record(by: id) else { return nil }
+        switch rec.status {
+        case .processing: return "p"
+        case .success: return "s"
+        case .error: return "e"
+        }
     }
     
     var body: some View {
@@ -69,6 +84,22 @@ struct EffectPreviewView: View {
                 submitImageForProcessing(newImage!)
             }
         }
+        .onChange(of: currentEffectRecordStatusKey) { _, newKey in
+            guard let id = currentEffectRecordId, let rec = effectStore.record(by: id) else { return }
+            switch rec.status {
+            case .success(let img):
+                if let image = img {
+                    resultImageForViewer = IdentifiableImageResult(image: image)
+                    showProcessingView = false
+                    selectedImageForEffect = nil
+                    showProcessingError = false
+                }
+            case .error:
+                showProcessingError = true
+            case .processing:
+                break
+            }
+        }
         .fullScreenCover(item: $resultImageForViewer) { item in
             ImageViewer(media: IdentifiableMedia(image: item.image), onDismiss: { resultImageForViewer = nil })
         }
@@ -86,20 +117,9 @@ struct EffectPreviewView: View {
             startProgressTimer()
             return
         }
-        Task {
-            do {
-                let resultImage = try await GenerationService.shared.runEffectAndLoadImage(photo: image, templateId: tid)
-                await MainActor.run {
-                    showProcessingView = false
-                    selectedImageForEffect = nil
-                    resultImageForViewer = IdentifiableImageResult(image: resultImage)
-                }
-            } catch {
-                await MainActor.run {
-                    showProcessingError = true
-                }
-            }
-        }
+        // Store запускает polling в фоне; закрытие processingProgressContent его не прерывает.
+        let recordId = effectStore.startEffect(photo: image, templateId: tid, isVideo: isVideo)
+        currentEffectRecordId = recordId
     }
     
     private func startProgressTimer() {
@@ -112,11 +132,13 @@ struct EffectPreviewView: View {
         }
     }
     
+    /// Закрытие оверлея не отменяет polling — он продолжается в EffectGenerationStore.
     private func dismissProcessingAndReset() {
         showProcessingView = false
         showProcessingError = false
         processingProgress = 0
         selectedImageForEffect = nil
+        // currentEffectRecordId не сбрасываем: запись остаётся в store, HistoryView покажет результат
     }
     
     private var navbar: some View {
@@ -181,18 +203,10 @@ struct EffectPreviewView: View {
                     if let items = effectItems {
                         ForEach(Array(items.enumerated()), id: \.element.id) { offset, item in
                             ZStack(alignment: .bottomLeading) {
-                                AsyncImage(url: URL(string: item.previewURL)) { phase in
-                                    switch phase {
-                                    case .success(let image):
-                                        image.resizable().scaledToFill()
-                                    case .failure:
-                                        Rectangle()
-                                            .fill(Color(hex: "#2B2D30"))
-                                            .overlay(Image(systemName: "photo").foregroundColor(.white.opacity(0.5)))
-                                    default:
-                                        ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-                                    }
-                                }
+                                CachedAsyncImage(
+                                    urlString: item.previewURL,
+                                    failure: { AnyView(Rectangle().fill(Color(hex: "#2B2D30")).overlay(Image(systemName: "photo").foregroundColor(.white.opacity(0.5)))) }
+                                )
                                 .frame(width: cellWidth, height: cellHeight)
                                 .clipped()
                                 if let t = item.title, !t.isEmpty {

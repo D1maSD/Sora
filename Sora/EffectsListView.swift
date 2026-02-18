@@ -180,6 +180,8 @@ struct EffectPreviewPayload: Identifiable {
     let id = UUID()
     let items: [EffectPreviewItem]
     let selectedIndex: Int
+    /// true для категории видео (история в HistoryView и тип записи в store)
+    var isVideo: Bool = false
 }
 
 struct EffectCategoryFullView: View {
@@ -203,7 +205,8 @@ struct EffectCategoryFullView: View {
             EffectPreviewView(
                 onBack: { effectPreviewPayload = nil },
                 effectItems: payload.items,
-                selectedEffectIndex: payload.selectedIndex
+                selectedEffectIndex: payload.selectedIndex,
+                isVideo: payload.isVideo
             )
         }
     }
@@ -267,24 +270,16 @@ struct EffectCategoryFullView: View {
                             ForEach(Array(effects.enumerated()), id: \.element.id) { index, effect in
                                 Button(action: {
                                     let items = effects.map { EffectPreviewItem(id: $0.id, previewURL: $0.preview, title: $0.title) }
-                                    effectPreviewPayload = EffectPreviewPayload(items: items, selectedIndex: index)
+                                    effectPreviewPayload = EffectPreviewPayload(items: items, selectedIndex: index, isVideo: false)
                                 }) {
                                     ZStack(alignment: .bottomLeading) {
-                                        AsyncImage(url: URL(string: effect.preview)) { phase in
-                                        switch phase {
-                                        case .success(let image):
-                                            image.resizable().scaledToFill()
-                                        case .failure:
-                                            Rectangle()
-                                                .fill(Color(hex: "#2B2D30"))
-                                                .overlay(Image(systemName: "photo").foregroundColor(.white.opacity(0.5)))
-                                        default:
-                                            ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-                                        }
-                                    }
-                                    .frame(width: cellWidth, height: cellHeight)
-                                    .clipped()
-                                    .cornerRadius(12)
+                                        CachedAsyncImage(
+                                            urlString: effect.preview,
+                                            failure: { AnyView(Rectangle().fill(Color(hex: "#2B2D30")).overlay(Image(systemName: "photo").foregroundColor(.white.opacity(0.5)))) }
+                                        )
+                                        .frame(width: cellWidth, height: cellHeight)
+                                        .clipped()
+                                        .cornerRadius(12)
                                     if let t = effect.title, !t.isEmpty {
                                         Text(t)
                                             .font(.system(size: 15, weight: .medium))
@@ -307,24 +302,16 @@ struct EffectCategoryFullView: View {
                             ForEach(Array(videos.enumerated()), id: \.element.id) { index, video in
                                 Button(action: {
                                     let items = videos.map { EffectPreviewItem(id: $0.id, previewURL: $0.photo_preview, title: $0.title) }
-                                    effectPreviewPayload = EffectPreviewPayload(items: items, selectedIndex: index)
+                                    effectPreviewPayload = EffectPreviewPayload(items: items, selectedIndex: index, isVideo: true)
                                 }) {
                                     ZStack(alignment: .bottomLeading) {
-                                    AsyncImage(url: URL(string: video.photo_preview)) { phase in
-                                        switch phase {
-                                        case .success(let image):
-                                            image.resizable().scaledToFill()
-                                        case .failure:
-                                            Rectangle()
-                                                .fill(Color(hex: "#2B2D30"))
-                                                .overlay(Image(systemName: "video").foregroundColor(.white.opacity(0.5)))
-                                        default:
-                                            ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-                                        }
-                                    }
-                                    .frame(width: cellWidth, height: cellHeight)
-                                    .clipped()
-                                    .cornerRadius(12)
+                                        CachedAsyncImage(
+                                            urlString: video.photo_preview,
+                                            failure: { AnyView(Rectangle().fill(Color(hex: "#2B2D30")).overlay(Image(systemName: "video").foregroundColor(.white.opacity(0.5)))) }
+                                        )
+                                        .frame(width: cellWidth, height: cellHeight)
+                                        .clipped()
+                                        .cornerRadius(12)
                                     VStack(alignment: .leading, spacing: 4) {
                                         if video.is_new == true {
                                             Text("NEW")

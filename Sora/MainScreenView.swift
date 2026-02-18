@@ -15,10 +15,13 @@ struct IdentifiableMedia: Identifiable {
     let id = UUID()
     let image: UIImage?
     let videoURL: URL?
+    /// ID записи в EffectGenerationStore — для кнопки Delete в ImageViewer (удалить из истории эффектов).
+    let effectRecordId: UUID?
     
-    init(image: UIImage? = nil, videoURL: URL? = nil) {
+    init(image: UIImage? = nil, videoURL: URL? = nil, effectRecordId: UUID? = nil) {
         self.image = image
         self.videoURL = videoURL
+        self.effectRecordId = effectRecordId
     }
 }
 
@@ -304,7 +307,8 @@ struct RoundedCorner: Shape {
 
 struct MainScreenView: View {
     @Binding var messages: [Message]
-    var onOpenHistory: (() -> Void)? = nil
+    /// Bool = isEffectsMode (true когда выбран режим effects)
+    var onOpenHistory: ((Bool) -> Void)? = nil
     var onOpenSettings: (() -> Void)? = nil
     var onFirstMessageSent: (() -> Void)? = nil
     var onDeleteChat: (() -> Void)? = nil
@@ -556,21 +560,10 @@ struct MainScreenView: View {
                 HStack(spacing: 12) {
                     ForEach(effects, id: \.id) { effect in
                         ZStack(alignment: .bottomLeading) {
-                            AsyncImage(url: URL(string: effect.preview)) { phase in
-                                switch phase {
-                                case .success(let image):
-                                    image
-                                        .resizable()
-                                        .scaledToFill()
-                                case .failure:
-                                    Rectangle()
-                                        .fill(Color(hex: "#2B2D30"))
-                                        .overlay(Image(systemName: "photo").foregroundColor(.white.opacity(0.5)))
-                                default:
-                                    ProgressView()
-                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                }
-                            }
+                            CachedAsyncImage(
+                                urlString: effect.preview,
+                                failure: { AnyView(Rectangle().fill(Color(hex: "#2B2D30")).overlay(Image(systemName: "photo").foregroundColor(.white.opacity(0.5)))) }
+                            )
                             .frame(width: cellWidth, height: cellHeight)
                             .clipped()
                             .cornerRadius(12)
@@ -614,21 +607,10 @@ struct MainScreenView: View {
                 HStack(spacing: 12) {
                     ForEach(videos, id: \.id) { video in
                         ZStack(alignment: .bottomLeading) {
-                            AsyncImage(url: URL(string: video.photo_preview)) { phase in
-                                switch phase {
-                                case .success(let image):
-                                    image
-                                        .resizable()
-                                        .scaledToFill()
-                                case .failure:
-                                    Rectangle()
-                                        .fill(Color(hex: "#2B2D30"))
-                                        .overlay(Image(systemName: "video").foregroundColor(.white.opacity(0.5)))
-                                default:
-                                    ProgressView()
-                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                }
-                            }
+                            CachedAsyncImage(
+                                urlString: video.photo_preview,
+                                failure: { AnyView(Rectangle().fill(Color(hex: "#2B2D30")).overlay(Image(systemName: "video").foregroundColor(.white.opacity(0.5)))) }
+                            )
                             .frame(width: cellWidth, height: cellHeight)
                             .clipped()
                             .cornerRadius(12)
@@ -815,7 +797,7 @@ struct MainScreenView: View {
                     .cornerRadius(12)
                 }
                 Button(action: {
-                    onOpenHistory?()
+                    onOpenHistory?(chatEffectsSelection == 1)
                 }) {
                     Image("clockArrow")
                         .resizable()
@@ -1539,6 +1521,9 @@ struct ImageViewer: View {
     var onDismiss: (() -> Void)? = nil
     @Environment(\.dismiss) var dismiss
     @State private var showShareSheet = false
+    @State private var showContextMenu = false
+    @State private var saveErrorText = ""
+    @State private var showSaveError = false
     
     var body: some View {
         ZStack {
@@ -1568,7 +1553,7 @@ struct ImageViewer: View {
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundColor(.white)
                     Spacer()
-                    Button(action: {}) {
+                    Button(action: { showContextMenu = true }) {
                         Image("threeDots")
                             .resizable()
                             .scaledToFit()
@@ -1589,12 +1574,14 @@ struct ImageViewer: View {
                             .resizable()
                             .scaledToFit()
                             .padding(.top, 40)
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, 30)
+                            .clipShape(RoundedRectangle(cornerRadius: 30))
                     } else if let videoURL = media.videoURL {
                         VideoPlayer(player: AVPlayer(url: videoURL))
                             .frame(maxWidth: .infinity)
                             .padding(.top, 40)
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, 30)
+                            .clipShape(RoundedRectangle(cornerRadius: 30))
                     }
                     
                     Button(action: {
@@ -1617,15 +1604,136 @@ struct ImageViewer: View {
                             )
                             .cornerRadius(28)
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, 30)
                     .padding(.top, 20)
                     
                     Spacer()
                 }
             }
         }
+        .overlay {
+            if showContextMenu {
+                Color.black.opacity(0.3)
+                    .ignoresSafeArea()
+                    .onTapGesture { showContextMenu = false }
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if showContextMenu {
+                imageViewerContextMenu
+            }
+        }
         .sheet(isPresented: $showShareSheet) {
             ShareSheet(activityItems: shareItems)
+        }
+        .alert("Save failed", isPresented: $showSaveError) {
+            Button("OK", role: .cancel) { saveErrorText = "" }
+        } message: {
+            Text(saveErrorText)
+        }
+    }
+    
+    private var imageViewerContextMenu: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button(action: {
+                saveMediaToGallery()
+                showContextMenu = false
+            }) {
+                HStack(spacing: 12) {
+                    Text("Save to gallery")
+                        .font(.system(size: 17, weight: .regular))
+                        .foregroundColor(.white)
+                    Spacer()
+                    Image("download")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 30, height: 30)
+                        .foregroundColor(.white)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+            }
+            .buttonStyle(.plain)
+            
+            Divider()
+                .background(Color.white.opacity(0.2))
+            
+            Button(action: {
+                if let id = media.effectRecordId {
+                    EffectGenerationStore.shared.removeRecord(id: id)
+                }
+                showContextMenu = false
+                onDismiss?()
+                dismiss()
+            }) {
+                HStack(spacing: 12) {
+                    Text("Delete")
+                        .font(.system(size: 17, weight: .regular))
+                        .foregroundColor(.red)
+                    Spacer()
+                    Image("redTrash")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 30, height: 30)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(width: 240)
+        .background(Color(hex: "#29292A"))
+        .cornerRadius(12)
+        .padding(.top, 70)
+        .padding(.trailing, 40)
+    }
+    
+    private func saveMediaToGallery() {
+        if let image = media.image {
+            PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+                guard status == .authorized || status == .limited else {
+                    DispatchQueue.main.async {
+                        saveErrorText = "Photo library access denied."
+                        showSaveError = true
+                    }
+                    return
+                }
+                PHPhotoLibrary.shared().performChanges {
+                    PHAssetChangeRequest.creationRequestForAsset(from: image)
+                } completionHandler: { success, error in
+                    DispatchQueue.main.async {
+                        if !success {
+                            saveErrorText = error?.localizedDescription ?? "Failed to save image."
+                            showSaveError = true
+                        }
+                    }
+                }
+            }
+        } else if let videoURL = media.videoURL {
+            PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+                guard status == .authorized || status == .limited else {
+                    DispatchQueue.main.async {
+                        saveErrorText = "Photo library access denied."
+                        showSaveError = true
+                    }
+                    return
+                }
+                PHPhotoLibrary.shared().performChanges {
+                    PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: videoURL)
+                } completionHandler: { success, error in
+                    DispatchQueue.main.async {
+                        if !success {
+                            saveErrorText = error?.localizedDescription ?? "Failed to save video."
+                            showSaveError = true
+                        }
+                    }
+                }
+            }
+        } else {
+            saveErrorText = "No image or video to save."
+            showSaveError = true
         }
     }
     
