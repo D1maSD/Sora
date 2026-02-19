@@ -27,25 +27,84 @@ struct PaywallView: View {
     )
     
     var body: some View {
+        let screenWidth = UIScreen.main.bounds.width
+        let screenHeight = UIScreen.main.bounds.height
+        
         ZStack {
-            // Фон на весь экран
+            // Подложка и картинка — по размеру всего экрана, без safe area (без отступов по краям)
+            Color.black
+                .frame(width: screenWidth, height: screenHeight)
+                .ignoresSafeArea(.all)
+            
             Image("paywallBack")
                 .resizable()
                 .scaledToFill()
-                .ignoresSafeArea()
+                .frame(width: screenWidth, height: screenHeight)
+                .clipped()
+                .ignoresSafeArea(.all)
             
-            // Контент на полную ширину, без смещения
-            VStack {
-                Spacer()
-                
-                // Два плана подписки (отступ 30 по горизонтали)
-                VStack(spacing: 12) {
+            // Контент: в GeometryReader, чтобы не сдвигаться (geo = область с учётом safe area)
+            GeometryReader { geo in
+                VStack {
+                    Spacer()
+                    
+                    // Большой тайтл в 2 строчки
+                    VStack(alignment: .center, spacing: 4) {
+                        Text("Unreal videos and photo")
+                            .font(.system(size: 26, weight: .bold))
+                            .foregroundColor(.white)
+                        Text("with PRO")
+                            .font(.system(size: 26, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.horizontal, 30)
+                    .padding(.bottom, 16)
+                    
+                    // Три пункта: слева sparkles 15×15, справа текст; айтемы .leading
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 5) {
+                            Image("sparkles")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 18, height: 18)
+                                .foregroundColor(.white)
+                            Text("Access to all effects")
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundColor(.white)
+                        }
+                        HStack(spacing: 5) {
+                            Image("sparkles")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 18, height: 18)
+                                .foregroundColor(.white)
+                            Text("Unlimited generation")
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundColor(.white)
+                        }
+                        HStack(spacing: 5) {
+                            Image("sparkles")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 18, height: 18)
+                                .foregroundColor(.white)
+                            Text("Access to all functions")
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.horizontal, 30)
+                    .padding(.bottom, 20)
+                    
+                    VStack(spacing: 7) {
                         Button(action: { isAnnualSelected = true }) {
                             ZStack(alignment: .leading) {
                                 Image(isAnnualSelected ? "firstOn" : "firstOff")
                                     .resizable()
                                     .scaledToFill()
-                                    .frame(height: 72)
+                                    .frame(height: 60)
                                     .clipped()
                                     .cornerRadius(14)
                                 VStack(alignment: .leading, spacing: 4) {
@@ -54,7 +113,7 @@ struct PaywallView: View {
                                         .foregroundColor(.white)
                                     Text("Auto renewable. Cancel anytime.")
                                         .font(.system(size: 13, weight: .regular))
-                                        .foregroundColor(.white.opacity(0.8))
+                                        .foregroundColor(.white.opacity(0.4))
                                 }
                                 .padding(.leading, 52)
                                 .padding(.vertical, 14)
@@ -68,7 +127,7 @@ struct PaywallView: View {
                                 Image(isAnnualSelected ? "secondOff" : "secondOn")
                                     .resizable()
                                     .scaledToFill()
-                                    .frame(height: 72)
+                                    .frame(height: 60)
                                     .clipped()
                                     .cornerRadius(14)
                                 VStack(alignment: .leading, spacing: 4) {
@@ -77,7 +136,7 @@ struct PaywallView: View {
                                         .foregroundColor(.white)
                                     Text("Auto renewable. Cancel anytime.")
                                         .font(.system(size: 13, weight: .regular))
-                                        .foregroundColor(.white.opacity(0.8))
+                                        .foregroundColor(.white.opacity(0.4))
                                 }
                                 .padding(.leading, 52)
                                 .padding(.vertical, 14)
@@ -86,23 +145,21 @@ struct PaywallView: View {
                         }
                         .buttonStyle(.plain)
                     }
-                    .padding(.horizontal, 30)
-                    .padding(.bottom, 16)
+                    .padding(.horizontal, 70)
+                    .padding(.bottom, 0)
                     
-                    // clockArrow и Cancel Anytime в одном HStack по центру
-                    HStack(spacing: 8) {
-                        Image("clockArrow")
+                    HStack(spacing: 2) {
+                        Image("clockGrayArrow")
                             .resizable()
                             .scaledToFit()
-                            .frame(width: 32, height: 32)
-                            .foregroundColor(.white.opacity(0.8))
+                            .frame(width: 25, height: 25)
+                            .foregroundColor(.white.opacity(0.4))
                         Text("Cancel Anytime")
-                            .font(.system(size: 15, weight: .regular))
-                            .foregroundColor(.white.opacity(0.8))
+                            .font(.system(size: 11, weight: .regular))
+                            .foregroundColor(.white.opacity(0.4))
                     }
-                    .padding(.bottom, 16)
+                    .padding(.bottom, 0)
                     
-                    // Кнопка Continue с синим градиентом (как Save)
                     Button(action: {
                         onContinue?()
                         onDismiss?()
@@ -116,42 +173,40 @@ struct PaywallView: View {
                             .cornerRadius(28)
                     }
                     .padding(.horizontal, 24)
-                    .padding(.bottom, 24)
+                    .padding(.bottom, 15)
                     
-                    // Три ссылки внизу
                     HStack {
                         Button(action: { onPrivacyPolicy?() }) {
                             Text("Privacy Policy")
-                                .font(.system(size: 13, weight: .regular))
-                                .foregroundColor(.white.opacity(0.7))
+                                .font(.system(size: 11, weight: .regular))
+                                .foregroundColor(.white.opacity(0.4))
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         
                         Button(action: { onRestorePurchases?() }) {
                             Text("Restore Purchases")
-                                .font(.system(size: 13, weight: .regular))
+                                .font(.system(size: 11, weight: .regular))
                                 .foregroundColor(.white.opacity(0.7))
                         }
                         .frame(maxWidth: .infinity, alignment: .center)
                         
                         Button(action: { onTermsOfUse?() }) {
                             Text("Terms of Use")
-                                .font(.system(size: 13, weight: .regular))
-                                .foregroundColor(.white.opacity(0.7))
+                                .font(.system(size: 11, weight: .regular))
+                                .foregroundColor(.white.opacity(0.4))
                         }
                         .frame(maxWidth: .infinity, alignment: .trailing)
                     }
                     .padding(.horizontal, 24)
-                    .padding(.bottom, 32)
+                    .padding(.bottom, 52)
                 }
-                .frame(maxWidth: .infinity)
+                .frame(width: geo.size.width)
             }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .ignoresSafeArea()
         }
-        
+        .clipped()
+        .ignoresSafeArea(.all)
     }
-
+}
 
 #Preview {
     PaywallView(
