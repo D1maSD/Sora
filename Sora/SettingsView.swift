@@ -10,6 +10,7 @@ struct SettingsView: View {
     
     @State private var notificationsEnabled = false
     @State private var showNotificationsAlert = false
+    @State private var showPaywall = false
     
     private var currentUserId: String? {
         KeychainStorage.shared.getUserId()
@@ -54,6 +55,9 @@ struct SettingsView: View {
                 )
             }
         }
+        .fullScreenCover(isPresented: $showPaywall) {
+            PaywallView(onDismiss: { showPaywall = false })
+        }
     }
     
     private var header: some View {
@@ -79,7 +83,7 @@ struct SettingsView: View {
             }
             .padding(.horizontal, 40)
             
-             Button(action: {}) {
+             Button(action: { showPaywall = true }) {
                 HStack(spacing: 6) {
                     Text("PRO")
                         .font(.system(size: 17, weight: .regular))

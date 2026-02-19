@@ -77,4 +77,9 @@ final class AuthService {
     var isAuthorized: Bool {
         keychain.getToken() != nil
     }
+    
+    /// GET /api/users/me — текущий пользователь (в т.ч. tokens). useAuth: true.
+    func fetchCurrentUser() async throws -> UserMeResponse {
+        try await api.get("/api/users/me")
+    }
 }

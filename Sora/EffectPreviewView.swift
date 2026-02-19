@@ -11,6 +11,7 @@ struct IdentifiableImageResult: Identifiable {
 }
 
 struct EffectPreviewView: View {
+    @EnvironmentObject var tokensStore: TokensStore
     let onBack: () -> Void
     var effectItems: [EffectPreviewItem]? = nil
     var selectedEffectIndex: Int = 0
@@ -164,9 +165,10 @@ struct EffectPreviewView: View {
                 
                 Button(action: {}) {
                     HStack(spacing: 6) {
-                        Text("1000")
+                        Text("\(tokensStore.tokens)")
                             .font(.system(size: 17, weight: .regular))
                             .foregroundColor(.white)
+                            .minimumScaleFactor(0.3)
                         Image("sparkles")
                             .resizable()
                             .scaledToFit()
@@ -421,4 +423,5 @@ private struct LottieSwiftUIView: View {
 
 #Preview {
     EffectPreviewView(onBack: {})
+        .environmentObject(TokensStore())
 }

@@ -27,6 +27,7 @@ struct HistoryView: View {
     @State private var renameText: String = ""
     @State private var effectHistoryPhotoVideo: Int = 0 // 0 = photo, 1 = video
     @State private var selectedEffectMedia: IdentifiableMedia?
+    @State private var showPaywall = false
     @ObservedObject private var effectStore = EffectGenerationStore.shared
     
     var body: some View {
@@ -93,6 +94,9 @@ struct HistoryView: View {
         .fullScreenCover(item: $selectedEffectMedia) { media in
             ImageViewer(media: media, onDismiss: { selectedEffectMedia = nil })
         }
+        .fullScreenCover(isPresented: $showPaywall) {
+            PaywallView(onDismiss: { showPaywall = false })
+        }
     }
     
     // MARK: - Nav bar (общий для chat и effects)
@@ -110,7 +114,7 @@ struct HistoryView: View {
                 .background(Color(hex: "#1F2023"))
                 .cornerRadius(12)
                 Spacer()
-                Button(action: {}) {
+                Button(action: { showPaywall = true }) {
                     HStack(spacing: 6) {
                         Text("PRO")
                             .font(.system(size: 17, weight: .regular))

@@ -10,6 +10,7 @@ import ApphudSDK
 
 @main
 struct SoraApp: App {
+    @StateObject private var tokensStore = TokensStore()
     @State private var isLoaded = false
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     
@@ -19,25 +20,29 @@ struct SoraApp: App {
     
     var body: some Scene {
         WindowGroup {
-            if isLoaded {
-                if hasCompletedOnboarding {
-                    ContentView()
+            Group {
+                if isLoaded {
+                    if hasCompletedOnboarding {
+                        ContentView()
+                    } else {
+                        OnboardingView()
+                    }
                 } else {
-                    OnboardingView()
-                }
-            } else {
-                SplashView()
-                    .onAppear {
-                        Task { @MainActor in
-                            async let auth = AuthService.shared.bootstrapUser()
-                            try? await Task.sleep(nanoseconds: 2_000_000_000)
-                            await auth
-                            withAnimation {
-                                isLoaded = true
+                    SplashView()
+                        .onAppear {
+                            Task { @MainActor in
+                                async let auth = AuthService.shared.bootstrapUser()
+                                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                                await auth
+                                await tokensStore.load()
+                                withAnimation {
+                                    isLoaded = true
+                                }
                             }
                         }
-                    }
+                }
             }
+            .environmentObject(tokensStore)
         }
     }
 }

@@ -30,3 +30,11 @@ struct AuthorizeResponse: Decodable {
     let access_token: String
     let token_type: String
 }
+
+// GET /api/users/me — response
+struct UserMeResponse: Decodable {
+    let id: String
+    let apphud_id: String
+    let tokens: Int
+    let avatar_tokens: Int
+}

@@ -6,6 +6,7 @@
 import SwiftUI
 
 struct EffectsListView: View {
+    @EnvironmentObject var tokensStore: TokensStore
     let onBack: () -> Void
     
     private let filterTitles = ["Hot", "Category 1", "Category 2", "Category 3", "Category 4", "Category 5"]
@@ -56,9 +57,10 @@ struct EffectsListView: View {
                 
                 Button(action: {}) {
                     HStack(spacing: 6) {
-                        Text("1000")
+                        Text("\(tokensStore.tokens)")
                             .font(.system(size: 17, weight: .regular))
                             .foregroundColor(.white)
+                            .minimumScaleFactor(0.3)
                         Image("sparkles")
                             .resizable()
                             .scaledToFit()
@@ -185,6 +187,7 @@ struct EffectPreviewPayload: Identifiable {
 }
 
 struct EffectCategoryFullView: View {
+    @EnvironmentObject var tokensStore: TokensStore
     let title: String
     let effects: [EffectItemResponse]?
     let videos: [VideoTemplateItemResponse]?
@@ -227,9 +230,10 @@ struct EffectCategoryFullView: View {
                 Spacer()
                 Button(action: {}) {
                     HStack(spacing: 6) {
-                        Text("1000")
+                        Text("\(tokensStore.tokens)")
                             .font(.system(size: 17, weight: .regular))
                             .foregroundColor(.white)
+                            .minimumScaleFactor(0.3)
                         Image("sparkles")
                             .resizable()
                             .scaledToFit()
@@ -348,4 +352,5 @@ struct EffectCategoryFullView: View {
 
 #Preview {
     EffectsListView(onBack: {})
+        .environmentObject(TokensStore())
 }

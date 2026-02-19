@@ -325,6 +325,7 @@ struct RoundedCorner: Shape {
 }
 
 struct MainScreenView: View {
+    @EnvironmentObject var tokensStore: TokensStore
     @Binding var messages: [Message]
     /// Bool = isEffectsMode (true когда выбран режим effects)
     var onOpenHistory: ((Bool) -> Void)? = nil
@@ -796,12 +797,13 @@ struct MainScreenView: View {
                 .cornerRadius(12)
                 .padding(.leading, 2)
                 
-                // Градиентная кнопка 1000
+                // Градиентная кнопка — баланс токенов
                 Button(action: {}) {
                     HStack(spacing: 6) {
-                        Text("1000")
+                        Text("\(tokensStore.tokens)")
                             .font(.system(size: 17, weight: .semibold))
                             .foregroundColor(.white)
+                            .minimumScaleFactor(0.3)
                         
                         Image("sparkles")
                             .resizable()
@@ -948,6 +950,7 @@ struct MainScreenView: View {
                         isLoadingResponse = false
                         generationTask = nil
                     }
+                    await tokensStore.load()
                 } catch is CancellationError {
                     await MainActor.run {
                         isLoadingResponse = false
@@ -985,6 +988,7 @@ struct MainScreenView: View {
                     isLoadingResponse = false
                     generationTask = nil
                 }
+                await tokensStore.load()
             } catch is CancellationError {
                 await MainActor.run {
                     isLoadingResponse = false
@@ -2100,4 +2104,5 @@ struct RenameChatAlertView: View {
 
 #Preview {
     MainScreenView(messages: .constant([]))
+        .environmentObject(TokensStore())
 }
