@@ -43,6 +43,26 @@ struct PaywallView: View {
                 .clipped()
                 .ignoresSafeArea(.all)
             
+            // Кнопка закрытия в правом верхнем углу
+            VStack {
+                HStack {
+                    Spacer()
+                    Button(action: { onDismiss?() }) {
+                        Image("xmark")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 36, height: 36)
+                            .foregroundColor(.white)
+                            .contentShape(Rectangle())
+                    }
+                    .opacity(0.2)
+                    .padding(.top, 55)
+                    .padding(.trailing, 10)
+                }
+                Spacer()
+            }
+            .allowsHitTesting(true)
+            
             // Контент: в GeometryReader, чтобы не сдвигаться (geo = область с учётом safe area)
             GeometryReader { geo in
                 VStack {
