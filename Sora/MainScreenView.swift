@@ -798,9 +798,9 @@ struct MainScreenView: View {
                 
                 // Градиентная кнопка 1000
                 Button(action: {}) {
-                    HStack(spacing: 8) {
+                    HStack(spacing: 6) {
                         Text("1000")
-                            .font(.system(size: 17, weight: .regular))
+                            .font(.system(size: 17, weight: .semibold))
                             .foregroundColor(.white)
                         
                         Image("sparkles")
@@ -808,8 +808,8 @@ struct MainScreenView: View {
                             .scaledToFit()
                             .frame(width: 32, height: 32)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
                     .background(
                         LinearGradient(
                             gradient: Gradient(colors: [
@@ -935,7 +935,8 @@ struct MainScreenView: View {
                 do {
                     let videoURL: URL
                     if let videoURLToEnhance = messageVideoURL, usedResolutionMenu {
-                        videoURL = try await GenerationService.shared.runFalVideoEnhance(videoURL: videoURLToEnhance, upscaleFactor: videoResolutionPx, typePrompt: messageText)
+                        let multiplier: Double = videoResolutionPx == 1080 ? 1.5 : 1.0
+                        videoURL = try await GenerationService.shared.runFalVideoEnhance(videoURL: videoURLToEnhance, upscaleMultiplier: multiplier)
                     } else if let photo = messageImage {
                         videoURL = try await GenerationService.shared.runVideoGeneration(photo: photo, templateId: defaultVideoTemplateId)
                     } else {

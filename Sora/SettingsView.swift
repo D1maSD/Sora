@@ -79,7 +79,7 @@ struct SettingsView: View {
             }
             .padding(.horizontal, 40)
             
-            Button(action: {}) {
+             Button(action: {}) {
                 HStack(spacing: 6) {
                     Text("PRO")
                         .font(.system(size: 17, weight: .regular))

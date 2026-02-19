@@ -187,20 +187,26 @@ final class GenerationService {
         return try await pollDownloadVideo(generationId: id)
     }
 
-    // MARK: - FAL Video Enhance (video + upscale_factor + type/prompt)
+    // MARK: - FAL Video Enhance (апскейл видео; type = "fal_video_enhance", upscale_factor = multiplier)
 
-    /// POST /api/generations/fal/video-enhance: видео + upscale_factor (720/1080) + type (промпт).
-    func startFalVideoEnhance(videoURL: URL, upscaleFactor: Int, typePrompt: String, appBundle: String? = nil, targetFps: Int? = nil, h264Output: Bool = true) async throws -> String {
+    /// POST /api/generations/fal/video-enhance: видео + upscale_factor (множитель Double, не пиксели). Поля prompt нет.
+    func startFalVideoEnhance(
+        videoURL: URL,
+        upscaleMultiplier: Double,
+        appBundle: String? = nil,
+        targetFps: Int? = nil,
+        h264Output: Bool = true
+    ) async throws -> String {
         let videoData = try Data(contentsOf: videoURL)
         let filename = videoURL.lastPathComponent.isEmpty ? "video.mp4" : videoURL.lastPathComponent
         var fields: [String: String] = [
-            "type": typePrompt,
-            "upscale_factor": "\(upscaleFactor)",
+            "type": "fal_video_enhance",
+            "upscale_factor": "\(upscaleMultiplier)",
             "H264_output": h264Output ? "true" : "false"
         ]
         if let app = appBundle { fields["app_bundle"] = app }
         if let fps = targetFps { fields["target_fps"] = "\(fps)" }
-        print("[Generation] POST /api/generations/fal/video-enhance upscale_factor=\(upscaleFactor)")
+        print("[Generation] POST /api/generations/fal/video-enhance upscale_factor=\(upscaleMultiplier)")
         let response: GenerationResponse = try await api.postMultipartVideo(
             "/api/generations/fal/video-enhance",
             formFields: fields,
@@ -212,8 +218,8 @@ final class GenerationService {
     }
 
     /// Полный цикл: fal/video-enhance → poll → скачать видео, вернуть URL.
-    func runFalVideoEnhance(videoURL: URL, upscaleFactor: Int, typePrompt: String) async throws -> URL {
-        let id = try await startFalVideoEnhance(videoURL: videoURL, upscaleFactor: upscaleFactor, typePrompt: typePrompt)
+    func runFalVideoEnhance(videoURL: URL, upscaleMultiplier: Double) async throws -> URL {
+        let id = try await startFalVideoEnhance(videoURL: videoURL, upscaleMultiplier: upscaleMultiplier)
         return try await pollDownloadVideo(generationId: id)
     }
 
