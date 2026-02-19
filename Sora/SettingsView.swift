@@ -6,6 +6,7 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @EnvironmentObject var tokensStore: TokensStore
     let onBack: () -> Void
     
     @State private var notificationsEnabled = false
@@ -56,7 +57,8 @@ struct SettingsView: View {
             }
         }
         .fullScreenCover(isPresented: $showPaywall) {
-            PaywallView(onDismiss: { showPaywall = false })
+            PaywallView(mode: .subscription, onDismiss: { showPaywall = false })
+                .environmentObject(tokensStore)
         }
     }
     

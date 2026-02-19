@@ -12,6 +12,7 @@ private let cellDateFormatter: DateFormatter = {
 }()
 
 struct HistoryView: View {
+    @EnvironmentObject var tokensStore: TokensStore
     let sessions: [ChatSessionItem]
     /// true = открыт из режима effects: сверху CustomSwitch(photo/video), сетка эффектов
     let isEffectsMode: Bool
@@ -95,7 +96,8 @@ struct HistoryView: View {
             ImageViewer(media: media, onDismiss: { selectedEffectMedia = nil })
         }
         .fullScreenCover(isPresented: $showPaywall) {
-            PaywallView(onDismiss: { showPaywall = false })
+            PaywallView(mode: .subscription, onDismiss: { showPaywall = false })
+                .environmentObject(tokensStore)
         }
     }
     

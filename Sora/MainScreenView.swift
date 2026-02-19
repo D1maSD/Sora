@@ -354,6 +354,7 @@ struct MainScreenView: View {
     @State private var showDeleteChatAlert = false
     @State private var scrollBannerId: Int? = 0
     @State private var showEffectsList = false
+    @State private var showTokensPaywall = false
     @State private var generationTask: Task<Void, Never>?
     @State private var generationError: String?
     @State private var showGenerationErrorAlert = false
@@ -403,6 +404,10 @@ struct MainScreenView: View {
         }
         .fullScreenCover(isPresented: $showEffectsList) {
             EffectsListView(onBack: { showEffectsList = false })
+        }
+        .fullScreenCover(isPresented: $showTokensPaywall) {
+            PaywallView(mode: .buyTokens, onDismiss: { showTokensPaywall = false })
+                .environmentObject(tokensStore)
         }
         .fullScreenCover(item: $effectCategoryForSeeAll) { payload in
             EffectCategoryFullView(
@@ -797,8 +802,8 @@ struct MainScreenView: View {
                 .cornerRadius(12)
                 .padding(.leading, 2)
                 
-                // Градиентная кнопка — баланс токенов
-                Button(action: {}) {
+                // Градиентная кнопка — баланс токенов (тап открывает paywall покупки токенов)
+                Button(action: { showTokensPaywall = true }) {
                     HStack(spacing: 6) {
                         Text("\(tokensStore.tokens)")
                             .font(.system(size: 17, weight: .semibold))

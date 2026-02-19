@@ -12,6 +12,7 @@ struct EffectsListView: View {
     private let filterTitles = ["Hot", "Category 1", "Category 2", "Category 3", "Category 4", "Category 5"]
     @State private var selectedFilterIndex: Int = 0
     @State private var showEffectPreview = false
+    @State private var showTokensPaywall = false
     
     private let gradientColors = [
         Color(hex: "#6CABE9"),
@@ -37,6 +38,10 @@ struct EffectsListView: View {
         .fullScreenCover(isPresented: $showEffectPreview) {
             EffectPreviewView(onBack: { showEffectPreview = false })
         }
+        .fullScreenCover(isPresented: $showTokensPaywall) {
+            PaywallView(mode: .buyTokens, onDismiss: { showTokensPaywall = false })
+                .environmentObject(tokensStore)
+        }
     }
     
     private var navbar: some View {
@@ -55,7 +60,7 @@ struct EffectsListView: View {
                 
                 Spacer()
                 
-                Button(action: {}) {
+                Button(action: { showTokensPaywall = true }) {
                     HStack(spacing: 6) {
                         Text("\(tokensStore.tokens)")
                             .font(.system(size: 17, weight: .regular))
@@ -194,6 +199,7 @@ struct EffectCategoryFullView: View {
     let onBack: () -> Void
     
     @State private var effectPreviewPayload: EffectPreviewPayload?
+    @State private var showTokensPaywall = false
     
     var body: some View {
         ZStack {
@@ -212,6 +218,10 @@ struct EffectCategoryFullView: View {
                 isVideo: payload.isVideo
             )
         }
+        .fullScreenCover(isPresented: $showTokensPaywall) {
+            PaywallView(mode: .buyTokens, onDismiss: { showTokensPaywall = false })
+                .environmentObject(tokensStore)
+        }
     }
     
     private var categoryNavbar: some View {
@@ -228,7 +238,7 @@ struct EffectCategoryFullView: View {
                 .background(Color(hex: "#2B2D30"))
                 .cornerRadius(12)
                 Spacer()
-                Button(action: {}) {
+                Button(action: { showTokensPaywall = true }) {
                     HStack(spacing: 6) {
                         Text("\(tokensStore.tokens)")
                             .font(.system(size: 17, weight: .regular))

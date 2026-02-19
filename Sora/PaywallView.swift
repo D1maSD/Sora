@@ -2,20 +2,33 @@
 //  PaywallView.swift
 //  Sora
 //
-//  Экран пейвола: фон paywallBack, два плана (Annual/Weekly), Cancel Anytime, кнопка Continue, ссылки.
+//  Экран пейвола: subscription (PRO) или buyTokens (покупка токенов).
 //
 
 import SwiftUI
+import ApphudSDK
+import StoreKit
+
+enum PaywallMode {
+    case subscription  // PRO: Annual/Weekly, Continue, Restore
+    case buyTokens      // Need more generations?, 4 пакета токенов, только Privacy + Terms
+}
 
 struct PaywallView: View {
+    var mode: PaywallMode = .subscription
     var onDismiss: (() -> Void)? = nil
     var onContinue: (() -> Void)? = nil
     var onPrivacyPolicy: (() -> Void)? = nil
     var onRestorePurchases: (() -> Void)? = nil
     var onTermsOfUse: (() -> Void)? = nil
     
+    @EnvironmentObject var tokensStore: TokensStore
+    
     /// true = выбран Annual (верхний), false = выбран Weekly (нижний)
     @State private var isAnnualSelected = true
+    /// Цены из Apphud (yearly_49.99_not_trial → Annual, week_6.99_not_trial → Weekly)
+    @State private var yearlyPriceString: String = "49.99"
+    @State private var weeklyPriceString: String = "6.99"
     
     private let blueGradient = LinearGradient(
         gradient: Gradient(colors: [
@@ -65,12 +78,101 @@ struct PaywallView: View {
             
             // Контент: в GeometryReader, чтобы не сдвигаться (geo = область с учётом safe area)
             GeometryReader { geo in
-                VStack {
-                    Spacer()
-                    
-                    // Большой тайтл в 2 строчки
-                    VStack(alignment: .center, spacing: 4) {
-                        Text("Unreal videos and photo")
+                if mode == .buyTokens {
+                    buyTokensContent(geo: geo)
+                } else {
+                    subscriptionContent(geo: geo)
+                }
+            }
+        }
+        .clipped()
+        .ignoresSafeArea(.all)
+        .task { if mode == .subscription { await loadApphudPrices() } }
+    }
+    
+    // MARK: - Конфигурация «покупка токенов»
+    private func buyTokensContent(geo: GeometryProxy) -> some View {
+        let tokenPacks: [(tokens: Int, price: String)] = [(100, "19.99"), (500, "19.99"), (1000, "19.99"), (2000, "19.99")]
+        return VStack {
+            Spacer()
+            VStack(alignment: .center, spacing: 8) {
+                Text("Need more generations?")
+                    .font(.system(size: 28, weight: .semibold))
+                    .foregroundColor(.white)
+                Text("Buy additional tokens")
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundColor(.white.opacity(0.5))
+                HStack(spacing: 4) {
+                    Text("My tokens: ")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.white)
+                    Text(PaywallView.tokensString(tokensStore.tokens))
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(Color(hex: "#6CABE9"))
+                }
+            }
+            .padding(.bottom, 24)
+            
+            VStack(spacing: 12) {
+                ForEach(tokenPacks, id: \.tokens) { pack in
+                    Button(action: {}) {
+                        HStack {
+                            HStack(spacing: 4) {
+                                Text(PaywallView.tokensString(pack.tokens))
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .foregroundColor(.white)
+                                Text(" tokens")
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .foregroundColor(.white.opacity(0.5))
+                            }
+                            Spacer()
+                            Text("$\(pack.price)")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundColor(.white)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.6))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 23)
+                        .background(Color(hex: "#1F2022"))
+                        .cornerRadius(14)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 24)
+            
+            HStack {
+                Button(action: { onPrivacyPolicy?() }) {
+                    Text("Privacy Policy")
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundColor(.white.opacity(0.4))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Spacer()
+                Button(action: { onTermsOfUse?() }) {
+                    Text("Terms of Use")
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundColor(.white.opacity(0.4))
+                }
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 52)
+        }
+        .frame(width: geo.size.width)
+    }
+    
+    // MARK: - Конфигурация subscription (PRO)
+    private func subscriptionContent(geo: GeometryProxy) -> some View {
+        VStack {
+            Spacer()
+            
+            // Большой тайтл в 2 строчки
+            VStack(alignment: .center, spacing: 4) {
+                Text("Unreal videos and photo")
                             .font(.system(size: 26, weight: .bold))
                             .foregroundColor(.white)
                         Text("with PRO")
@@ -128,7 +230,7 @@ struct PaywallView: View {
                                     .clipped()
                                     .cornerRadius(14)
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text("Just $29.99 / Annual")
+                                    Text("Just $\(yearlyPriceString) / Annual")
                                         .font(.system(size: 17, weight: .semibold))
                                         .foregroundColor(.white)
                                     Text("Auto renewable. Cancel anytime.")
@@ -151,7 +253,7 @@ struct PaywallView: View {
                                     .clipped()
                                     .cornerRadius(14)
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text("Just $29.99 / Weekly")
+                                    Text("Just $\(weeklyPriceString) / Weekly")
                                         .font(.system(size: 17, weight: .semibold))
                                         .foregroundColor(.white)
                                     Text("Auto renewable. Cancel anytime.")
@@ -219,21 +321,62 @@ struct PaywallView: View {
                     }
                     .padding(.horizontal, 24)
                     .padding(.bottom, 52)
+        }
+        .frame(width: geo.size.width)
+    }
+    
+    /// Загружает цены из Apphud (yearly_49.99_not_trial, week_6.99_not_trial) и обновляет UI.
+    private func loadApphudPrices() async {
+        let placementId = "main"
+        guard let placement = await Apphud.placement(placementId),
+              let paywall = placement.paywall else { return }
+        
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.locale = Locale.current
+        
+        for product in paywall.products {
+            let id = product.productId.lowercased()
+            if id.contains("yearly") {
+                if let skProduct = product.skProduct {
+                    formatter.locale = skProduct.priceLocale
+                    if let str = formatter.string(from: skProduct.price) {
+                        let trimmed = str.replacingOccurrences(of: formatter.currencySymbol, with: "").trimmingCharacters(in: .whitespaces)
+                        await MainActor.run { yearlyPriceString = trimmed }
+                    }
+                } else if let num = parsePriceFromProductId(product.productId) {
+                    await MainActor.run { yearlyPriceString = num }
                 }
-                .frame(width: geo.size.width)
+            } else if id.contains("week") {
+                if let skProduct = product.skProduct {
+                    formatter.locale = skProduct.priceLocale
+                    if let str = formatter.string(from: skProduct.price) {
+                        let trimmed = str.replacingOccurrences(of: formatter.currencySymbol, with: "").trimmingCharacters(in: .whitespaces)
+                        await MainActor.run { weeklyPriceString = trimmed }
+                    }
+                } else if let num = parsePriceFromProductId(product.productId) {
+                    await MainActor.run { weeklyPriceString = num }
+                }
             }
         }
-        .clipped()
-        .ignoresSafeArea(.all)
+    }
+    
+    /// Парсит цену из productId вида "yearly_49.99_not_trial" или "week_6.99_not_trial".
+    private func parsePriceFromProductId(_ productId: String) -> String? {
+        let parts = productId.split(separator: "_")
+        guard parts.count >= 2, let lastNum = parts.dropFirst().first(where: { Double($0) != nil }) else { return nil }
+        return String(lastNum)
+    }
+    
+    /// Строка числа без разделителя тысяч (1000, а не 1,000).
+    private static func tokensString(_ value: Int) -> String {
+        let f = NumberFormatter()
+        f.usesGroupingSeparator = false
+        return f.string(from: NSNumber(value: value)) ?? "\(value)"
     }
 }
 
 #Preview {
-    PaywallView(
-        onDismiss: {},
-        onContinue: {},
-        onPrivacyPolicy: {},
-        onRestorePurchases: {},
-        onTermsOfUse: {}
-    )
+    PaywallView(mode: .subscription, onDismiss: {}, onContinue: {}, onPrivacyPolicy: {}, onRestorePurchases: {}, onTermsOfUse: {})
+        .environmentObject(TokensStore())
 }

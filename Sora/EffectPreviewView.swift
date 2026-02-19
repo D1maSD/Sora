@@ -30,6 +30,7 @@ struct EffectPreviewView: View {
     @State private var scrollBannerId: Int?
     /// ID записи в store для текущей генерации (polling продолжается при закрытии оверлея)
     @State private var currentEffectRecordId: UUID?
+    @State private var showTokensPaywall = false
     
     private let previewBannerData: [(imageName: String, title: String)] = [
         ("effectCard1", "Effect 1"),
@@ -109,6 +110,10 @@ struct EffectPreviewView: View {
         .fullScreenCover(item: $resultImageForViewer) { item in
             ImageViewer(media: IdentifiableMedia(image: item.image), onDismiss: { resultImageForViewer = nil })
         }
+        .fullScreenCover(isPresented: $showTokensPaywall) {
+            PaywallView(mode: .buyTokens, onDismiss: { showTokensPaywall = false })
+                .environmentObject(tokensStore)
+        }
         .onAppear {
             if effectItems != nil {
                 scrollBannerId = selectedEffectIndex
@@ -163,7 +168,7 @@ struct EffectPreviewView: View {
                 
                 Spacer()
                 
-                Button(action: {}) {
+                Button(action: { showTokensPaywall = true }) {
                     HStack(spacing: 6) {
                         Text("\(tokensStore.tokens)")
                             .font(.system(size: 17, weight: .regular))
