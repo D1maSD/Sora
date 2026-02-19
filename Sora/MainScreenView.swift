@@ -1466,8 +1466,8 @@ struct CustomSwitch: View {
                 // Белая область для активного элемента с увеличенным скруглением
                 RoundedRectangle(cornerRadius: 12)
                     .fill(Color.white)
-                    .frame(width: geometry.size.width / CGFloat(options.count), height: 31)
-                    .offset(x: CGFloat(selection) * (geometry.size.width / CGFloat(options.count)), y: 0)
+                    .frame(width: geometry.size.width / CGFloat(options.count), height: 38)
+                    .offset(x: CGFloat(selection) * (geometry.size.width / CGFloat(options.count)), y: -2)
                     .animation(.spring(response: 0.3, dampingFraction: 0.7), value: selection)
             }
             .overlay(
@@ -1479,10 +1479,11 @@ struct CustomSwitch: View {
                             }
                         }) {
                             Text(options[index])
-                                .font(.system(size: 17, weight: .regular))
+                                .font(.system(size: 17, weight: .semibold))
                                 .foregroundColor(selection == index ? .black : .white)
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 35)
+                                .offset(y: -2)
                         }
                     }
                 }
