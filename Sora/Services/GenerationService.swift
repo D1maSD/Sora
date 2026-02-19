@@ -184,10 +184,81 @@ final class GenerationService {
     /// Полный цикл: видео по фото + template_id → polling → скачивание. Возвращает URL файла видео или throws.
     func runVideoGeneration(photo: UIImage, templateId: Int) async throws -> URL {
         let id = try await startVideoGeneration(photo: photo, templateId: templateId)
-        let resultOrUrl = try await pollUntilFinished(generationId: id)
+        return try await pollDownloadVideo(generationId: id)
+    }
+
+    // MARK: - FAL Video Enhance (video + upscale_factor + type/prompt)
+
+    /// POST /api/generations/fal/video-enhance: видео + upscale_factor (720/1080) + type (промпт).
+    func startFalVideoEnhance(videoURL: URL, upscaleFactor: Int, typePrompt: String, appBundle: String? = nil, targetFps: Int? = nil, h264Output: Bool = true) async throws -> String {
+        let videoData = try Data(contentsOf: videoURL)
+        let filename = videoURL.lastPathComponent.isEmpty ? "video.mp4" : videoURL.lastPathComponent
+        var fields: [String: String] = [
+            "type": typePrompt,
+            "upscale_factor": "\(upscaleFactor)",
+            "H264_output": h264Output ? "true" : "false"
+        ]
+        if let app = appBundle { fields["app_bundle"] = app }
+        if let fps = targetFps { fields["target_fps"] = "\(fps)" }
+        print("[Generation] POST /api/generations/fal/video-enhance upscale_factor=\(upscaleFactor)")
+        let response: GenerationResponse = try await api.postMultipartVideo(
+            "/api/generations/fal/video-enhance",
+            formFields: fields,
+            video: (videoData, filename, "video/mp4"),
+            useAuth: true
+        )
+        print("[Generation] FAL video-enhance started, id: \(response.id)")
+        return response.id
+    }
+
+    /// Полный цикл: fal/video-enhance → poll → скачать видео, вернуть URL.
+    func runFalVideoEnhance(videoURL: URL, upscaleFactor: Int, typePrompt: String) async throws -> URL {
+        let id = try await startFalVideoEnhance(videoURL: videoURL, upscaleFactor: upscaleFactor, typePrompt: typePrompt)
+        return try await pollDownloadVideo(generationId: id)
+    }
+
+    // MARK: - Fotobudka txt2video (только текст, без фото/видео)
+
+    /// POST /api/generations/fotobudka/txt2video через APIClient.createTxt2Video (точная спецификация: duration "5", cfg_scale 0.5, model kling-v2-master).
+    func startFotobudkaTxt2Video(
+        prompt: String,
+        aspectRatio: String = "16:9",
+        duration: String = "5",
+        cfgScale: Double = 0.5,
+        mode: String = "std",
+        modelName: String = "kling-v2-master",
+        negativePrompt: String = ""
+    ) async throws -> String {
+        let result = await api.createTxt2Video(
+            prompt: prompt,
+            aspectRatio: aspectRatio,
+            duration: duration,
+            cfgScale: cfgScale,
+            mode: mode,
+            modelName: modelName,
+            negativePrompt: negativePrompt
+        )
+        switch result {
+        case .success(let response):
+            print("[Generation] txt2video started, id: \(response.id)")
+            return response.id
+        case .failure(let error):
+            throw error
+        }
+    }
+
+    /// Полный цикл: txt2video → poll → скачать видео, вернуть URL.
+    func runFotobudkaTxt2Video(prompt: String) async throws -> URL {
+        let id = try await startFotobudkaTxt2Video(prompt: prompt)
+        return try await pollDownloadVideo(generationId: id)
+    }
+
+    /// Общая часть: polling + скачивание результата как видео в temp file.
+    private func pollDownloadVideo(generationId: String) async throws -> URL {
+        let resultOrUrl = try await pollUntilFinished(generationId: generationId)
         let data = try await downloadGenerationFile(resultOrUrl: resultOrUrl)
         let tempDir = FileManager.default.temporaryDirectory
-        let filename = "video_\(id)_\(UUID().uuidString).mp4"
+        let filename = "video_\(generationId)_\(UUID().uuidString).mp4"
         let fileURL = tempDir.appendingPathComponent(filename)
         try data.write(to: fileURL)
         print("[Generation] Video saved to \(fileURL.path)")

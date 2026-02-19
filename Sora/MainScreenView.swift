@@ -94,6 +94,25 @@ struct Message: Identifiable, Equatable {
     }
 }
 
+// Кнопка выбора разрешения видео (720/1080); через @Binding текст обновляется реактивно при смене значения в меню.
+struct VideoResolutionButtonView: View {
+    @Binding var resolutionPx: Int
+    let onTap: () -> Void
+    var body: some View {
+        let _ = print("[VideoResolutionButtonView] body, resolutionPx = \(resolutionPx)")
+        return Button(action: onTap) {
+            Text("\(resolutionPx)px")
+                .font(.system(size: 17, weight: .regular))
+                .foregroundColor(.white)
+                .frame(minWidth: 75, minHeight: 44, maxHeight: 44)
+                .padding(.horizontal, 8)
+                .background(Color(hex: "#3B3D40"))
+                .cornerRadius(12)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 // Компонент для отображения исходящего сообщения
 struct MessageView: View {
     let message: Message
@@ -316,8 +335,10 @@ struct MainScreenView: View {
     
     @State private var chatEffectsSelection = 0 // 0 = chat, 1 = effects
     @State private var photoVideoSelection = 0 // 0 = photo, 1 = video
-    @State private var videoResolutionPx: Int = 720 // 720 или 1080
+    @State private var videoResolutionPx: Int = 720
     @State private var showVideoResolutionMenu = false
+    /// Открывал ли пользователь меню выбора разрешения (720/1080) — только тогда отправляем в fal/video-enhance.
+    @State private var userDidOpenVideoResolutionMenu = false
     @State private var textFieldText = ""
     @State private var showAddPhotoSheet = false
     @State private var selectedImage: UIImage? = nil
@@ -429,14 +450,14 @@ struct MainScreenView: View {
         }
     }
     
-    /// Меню выбора разрешения видео (720px / 1080px), без иконок — только две кнопки. Показывается прямо над кнопкой «720px»/«1080px».
-    private var videoResolutionMenuView: some View {
+    /// Меню выбора разрешения видео (720px / 1080px). Обновляет state через замыкание onSelect, чтобы значение гарантированно менялось в MainScreenView.
+    private func videoResolutionMenuView(onSelect: @escaping (Int) -> Void, isPresented: Binding<Bool>) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Button(action: {
-                videoResolutionPx = 1080
-                DispatchQueue.main.async { showVideoResolutionMenu = false }
+                isPresented.wrappedValue = false
+                onSelect(720)
             }) {
-                Text("1080px")
+                Text("720px")
                     .font(.system(size: 17, weight: .regular))
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -449,11 +470,10 @@ struct MainScreenView: View {
                 .background(Color.white.opacity(0.2))
             
             Button(action: {
-                videoResolutionPx = 720
-                
-                DispatchQueue.main.async { showVideoResolutionMenu = false }
+                isPresented.wrappedValue = false
+                onSelect(1080)
             }) {
-                Text("720px")
+                Text("1080px")
                     .font(.system(size: 17, weight: .regular))
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -896,25 +916,31 @@ struct MainScreenView: View {
         let messageText = textFieldText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !messageText.isEmpty else { return }
         let messageImage = selectedImage
+        let messageVideoURL = selectedVideoURL
 
         if photoVideoSelection == 1 {
-            // Режим video: нужна фотография для генерации видео
-            guard messageImage != nil else {
-                generationError = "Please add a photo to generate a video."
-                showGenerationErrorAlert = true
-                return
-            }
-            let newMessage = Message(text: messageText, image: messageImage, videoURL: nil, isIncoming: false)
+            // Режим video: fal/video-enhance только если пользователь открывал меню разрешения (720/1080); иначе txt2video или fotobudka/video.
+            let usedResolutionMenu = userDidOpenVideoResolutionMenu
+            let newMessage = Message(text: messageText, image: messageImage, videoURL: messageVideoURL, isIncoming: false)
             let wasEmpty = messages.isEmpty
             messages = messages + [newMessage]
-            if wasEmpty { onFirstMessageSent?() }
             textFieldText = ""
             selectedImage = nil
+            selectedVideoURL = nil
+            userDidOpenVideoResolutionMenu = false
             imageFileName = ""
+            if wasEmpty { onFirstMessageSent?() }
             isLoadingResponse = true
             generationTask = Task {
                 do {
-                    let videoURL = try await GenerationService.shared.runVideoGeneration(photo: messageImage!, templateId: defaultVideoTemplateId)
+                    let videoURL: URL
+                    if let videoURLToEnhance = messageVideoURL, usedResolutionMenu {
+                        videoURL = try await GenerationService.shared.runFalVideoEnhance(videoURL: videoURLToEnhance, upscaleFactor: videoResolutionPx, typePrompt: messageText)
+                    } else if let photo = messageImage {
+                        videoURL = try await GenerationService.shared.runVideoGeneration(photo: photo, templateId: defaultVideoTemplateId)
+                    } else {
+                        videoURL = try await GenerationService.shared.runFotobudkaTxt2Video(prompt: messageText)
+                    }
                     await MainActor.run {
                         let incoming = Message(text: messageText, image: nil, videoURL: videoURL, isIncoming: true)
                         messages = messages + [incoming]
@@ -1103,9 +1129,15 @@ struct MainScreenView: View {
             .padding(.bottom, 34)
             
             if showVideoResolutionMenu {
-                videoResolutionMenuView
-                    .padding(.leading, 60 + 13 + 12)
-                    .padding(.bottom, 13 + 44 + 8)
+                videoResolutionMenuView(
+                    onSelect: { newValue in
+                        videoResolutionPx = newValue
+                        print("[MainScreenView] videoResolutionPx = \(newValue)")
+                    },
+                    isPresented: $showVideoResolutionMenu
+                )
+                .padding(.leading, 60 + 13 + 12)
+                .padding(.bottom, 13 + 44 + 8)
             }
         }
         .sheet(isPresented: $showAddPhotoSheet) {
@@ -1195,6 +1227,19 @@ struct MainScreenView: View {
                                 .padding(.bottom, 8)
                             }
                             
+                            // Превью видео под TextField (режим video) — по той же логике, что и превью изображения
+                            if photoVideoSelection == 1, let videoURL = selectedVideoURL {
+                                HStack(spacing: 12) {
+                                    SmallVideoThumbnailView(url: videoURL)
+                                    Text(videoURL.lastPathComponent)
+                                        .font(.system(size: 15, weight: .regular))
+                                        .foregroundColor(.white)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.top, 2)
+                                .padding(.bottom, 8)
+                            }
+                            
                             // Кнопки внизу - прикреплены к левому краю
                             HStack(spacing: 4) {
                                 // Кнопка с плюсом слева
@@ -1249,18 +1294,11 @@ struct MainScreenView: View {
                                         .cornerRadius(12)
                                     }
                                 } else {
-                                    // video выбран - выбор 720px / 1080px
-                                    Button(action: { showVideoResolutionMenu = true }) {
-                                        Text("\(videoResolutionPx)px")
-                                            .id(videoResolutionPx)
-                                            .font(.system(size: 17, weight: .regular))
-                                            .foregroundColor(.white)
-                                            .frame(width: 75, height: 44)
-                                            .padding(.horizontal, 8)
-                                            .background(Color(hex: "#3B3D40"))
-                                            .cornerRadius(12)
-                                    }
-                                    .buttonStyle(.plain)
+                                    // video выбран - выбор 720px / 1080px (отдельный View, чтобы подпись обновлялась при смене значения)
+                                    VideoResolutionButtonView(resolutionPx: $videoResolutionPx, onTap: {
+                                        showVideoResolutionMenu = true
+                                        userDidOpenVideoResolutionMenu = true
+                                    })
                                 }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1582,6 +1620,44 @@ struct StyleCard: View {
         .frame(height: 100)
         .onTapGesture {
             onTap()
+        }
+    }
+}
+
+// Маленькое превью видео (40x40) для отображения под TextField в режиме video
+struct SmallVideoThumbnailView: View {
+    let url: URL
+    @State private var thumbnail: UIImage?
+    
+    var body: some View {
+        ZStack {
+            if let thumbnail = thumbnail {
+                Image(uiImage: thumbnail)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 40, height: 40)
+                    .clipped()
+                    .cornerRadius(8)
+            } else {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color(hex: "#2A2A2A"))
+                    .frame(width: 40, height: 40)
+            }
+            Image(systemName: "play.circle.fill")
+                .font(.system(size: 20))
+                .foregroundColor(.white.opacity(0.9))
+        }
+        .onAppear { loadThumbnail() }
+    }
+    
+    private func loadThumbnail() {
+        let asset = AVAsset(url: url)
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.generateCGImagesAsynchronously(forTimes: [NSValue(time: .zero)]) { _, cgImage, _, _, _ in
+            if let cgImage = cgImage {
+                DispatchQueue.main.async { thumbnail = UIImage(cgImage: cgImage) }
+            }
         }
     }
 }
