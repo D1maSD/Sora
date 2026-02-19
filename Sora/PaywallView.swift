@@ -125,6 +125,7 @@ struct PaywallView: View {
                                     .font(.system(size: 17, weight: .semibold))
                                     .foregroundColor(.white.opacity(0.5))
                             }
+                            .padding(.horizontal, 10)
                             Spacer()
                             Text("$\(pack.price)")
                                 .font(.system(size: 17, weight: .semibold))
@@ -132,6 +133,7 @@ struct PaywallView: View {
                             Image(systemName: "chevron.right")
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundColor(.white.opacity(0.6))
+                                .padding(.trailing, 10)
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 23)
