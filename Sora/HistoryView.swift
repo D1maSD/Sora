@@ -96,7 +96,7 @@ struct HistoryView: View {
             ImageViewer(media: media, onDismiss: { selectedEffectMedia = nil })
         }
         .fullScreenCover(isPresented: $showPaywall) {
-            PaywallView(mode: .subscription, onDismiss: { showPaywall = false })
+            PaywallView(onDismiss: { showPaywall = false })
                 .environmentObject(tokensStore)
         }
     }

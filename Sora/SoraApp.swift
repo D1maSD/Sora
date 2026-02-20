@@ -8,6 +8,17 @@
 import SwiftUI
 import ApphudSDK
 
+/// Единый источник ключа Apphud. Сейчас используется ключ из Demo (tokens paywall).
+/// Чтобы вернуть старый ключ — замените `currentKey` на `legacyKey`.
+enum ApphudConfig {
+    /// Ключ из Demo / PurchaseManager (paywall "tokens", подписки)
+    static let demoKey = "app_MJp2QdcqMLP5XCgB8pAjZAhzAs2nva"
+    /// Старый ключ (ранее в SoraApp)
+    static let legacyKey = "app_TZDsHNqKL7UkoaScjN6oyShxkzRX97"
+    /// Текущий ключ приложения — поменяйте на legacyKey при необходимости
+    static let currentKey = demoKey
+}
+
 @main
 struct SoraApp: App {
     @StateObject private var tokensStore = TokensStore()
@@ -15,7 +26,7 @@ struct SoraApp: App {
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     
     init() {
-        Apphud.start(apiKey: "app_TZDsHNqKL7UkoaScjN6oyShxkzRX97")
+        Apphud.start(apiKey: ApphudConfig.currentKey)
     }
     
     var body: some Scene {

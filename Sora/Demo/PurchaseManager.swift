@@ -67,10 +67,9 @@ final class PurchaseManager: ObservableObject {
     static let shared = PurchaseManager()
     
     private init() {
-        logger.info("PurchaseManager: Initializing Apphud SDK")
+        logger.info("PurchaseManager: Initializing (Apphud started in SoraApp with ApphudConfig.currentKey)")
         Apphud.setPaywallsCacheTimeout(3600)
-        Apphud.start(apiKey: "app_MJp2QdcqMLP5XCgB8pAjZAhzAs2nva")
-        logger.info("PurchaseManager: Apphud.start() called")
+        // Apphud.start вызывается один раз в SoraApp с ключом ApphudConfig.currentKey (Demo ключ)
         
         if let storedTokens = KeychainManager.shared.loadInt(forKey: "tokens") {
             self.tokens = storedTokens

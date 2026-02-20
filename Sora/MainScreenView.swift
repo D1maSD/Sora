@@ -406,8 +406,9 @@ struct MainScreenView: View {
             EffectsListView(onBack: { showEffectsList = false })
         }
         .fullScreenCover(isPresented: $showTokensPaywall) {
-            PaywallView(mode: .buyTokens, onDismiss: { showTokensPaywall = false })
+            PaywallTokensView(onDismiss: { showTokensPaywall = false })
                 .environmentObject(tokensStore)
+                .environmentObject(PurchaseManager.shared)
         }
         .fullScreenCover(item: $effectCategoryForSeeAll) { payload in
             EffectCategoryFullView(

@@ -2,20 +2,14 @@
 //  PaywallView.swift
 //  Sora
 //
-//  Экран пейвола: subscription (PRO) или buyTokens (покупка токенов).
+//  Экран пейвола подписки PRO (Annual/Weekly).
 //
 
 import SwiftUI
 import ApphudSDK
 import StoreKit
 
-enum PaywallMode {
-    case subscription  // PRO: Annual/Weekly, Continue, Restore
-    case buyTokens      // Need more generations?, 4 пакета токенов, только Privacy + Terms
-}
-
 struct PaywallView: View {
-    var mode: PaywallMode = .subscription
     var onDismiss: (() -> Void)? = nil
     var onContinue: (() -> Void)? = nil
     var onPrivacyPolicy: (() -> Void)? = nil
@@ -78,96 +72,15 @@ struct PaywallView: View {
             
             // Контент: в GeometryReader, чтобы не сдвигаться (geo = область с учётом safe area)
             GeometryReader { geo in
-                if mode == .buyTokens {
-                    buyTokensContent(geo: geo)
-                } else {
-                    subscriptionContent(geo: geo)
-                }
+                subscriptionContent(geo: geo)
             }
         }
         .clipped()
         .ignoresSafeArea(.all)
-        .task { if mode == .subscription { await loadApphudPrices() } }
+        .task { await loadApphudPrices() }
     }
     
-    // MARK: - Конфигурация «покупка токенов»
-    private func buyTokensContent(geo: GeometryProxy) -> some View {
-        let tokenPacks: [(tokens: Int, price: String)] = [(100, "19.99"), (500, "19.99"), (1000, "19.99"), (2000, "19.99")]
-        return VStack {
-            Spacer()
-            VStack(alignment: .center, spacing: 8) {
-                Text("Need more generations?")
-                    .font(.system(size: 28, weight: .semibold))
-                    .foregroundColor(.white)
-                Text("Buy additional tokens")
-                    .font(.system(size: 13, weight: .regular))
-                    .foregroundColor(.white.opacity(0.5))
-                HStack(spacing: 4) {
-                    Text("My tokens: ")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(.white)
-                    Text(PaywallView.tokensString(tokensStore.tokens))
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(Color(hex: "#6CABE9"))
-                }
-            }
-            .padding(.bottom, 24)
-            
-            VStack(spacing: 12) {
-                ForEach(tokenPacks, id: \.tokens) { pack in
-                    Button(action: {}) {
-                        HStack {
-                            HStack(spacing: 4) {
-                                Text(PaywallView.tokensString(pack.tokens))
-                                    .font(.system(size: 17, weight: .semibold))
-                                    .foregroundColor(.white)
-                                Text(" tokens")
-                                    .font(.system(size: 17, weight: .semibold))
-                                    .foregroundColor(.white.opacity(0.5))
-                            }
-                            .padding(.horizontal, 10)
-                            Spacer()
-                            Text("$\(pack.price)")
-                                .font(.system(size: 17, weight: .semibold))
-                                .foregroundColor(.white)
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundColor(.white.opacity(0.6))
-                                .padding(.trailing, 10)
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 23)
-                        .background(Color(hex: "#1F2022"))
-                        .cornerRadius(14)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 24)
-            
-            HStack {
-                Button(action: { onPrivacyPolicy?() }) {
-                    Text("Privacy Policy")
-                        .font(.system(size: 13, weight: .regular))
-                        .foregroundColor(.white.opacity(0.4))
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                Spacer()
-                Button(action: { onTermsOfUse?() }) {
-                    Text("Terms of Use")
-                        .font(.system(size: 13, weight: .regular))
-                        .foregroundColor(.white.opacity(0.4))
-                }
-                .frame(maxWidth: .infinity, alignment: .trailing)
-            }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 52)
-        }
-        .frame(width: geo.size.width)
-    }
-    
-    // MARK: - Конфигурация subscription (PRO)
+    // MARK: - Subscription (PRO)
     private func subscriptionContent(geo: GeometryProxy) -> some View {
         VStack {
             Spacer()
@@ -369,16 +282,9 @@ struct PaywallView: View {
         guard parts.count >= 2, let lastNum = parts.dropFirst().first(where: { Double($0) != nil }) else { return nil }
         return String(lastNum)
     }
-    
-    /// Строка числа без разделителя тысяч (1000, а не 1,000).
-    private static func tokensString(_ value: Int) -> String {
-        let f = NumberFormatter()
-        f.usesGroupingSeparator = false
-        return f.string(from: NSNumber(value: value)) ?? "\(value)"
-    }
 }
 
 #Preview {
-    PaywallView(mode: .subscription, onDismiss: {}, onContinue: {}, onPrivacyPolicy: {}, onRestorePurchases: {}, onTermsOfUse: {})
+    PaywallView(onDismiss: {}, onContinue: {}, onPrivacyPolicy: {}, onRestorePurchases: {}, onTermsOfUse: {})
         .environmentObject(TokensStore())
 }

@@ -39,8 +39,9 @@ struct EffectsListView: View {
             EffectPreviewView(onBack: { showEffectPreview = false })
         }
         .fullScreenCover(isPresented: $showTokensPaywall) {
-            PaywallView(mode: .buyTokens, onDismiss: { showTokensPaywall = false })
+            PaywallTokensView(onDismiss: { showTokensPaywall = false })
                 .environmentObject(tokensStore)
+                .environmentObject(PurchaseManager.shared)
         }
     }
     
@@ -219,8 +220,9 @@ struct EffectCategoryFullView: View {
             )
         }
         .fullScreenCover(isPresented: $showTokensPaywall) {
-            PaywallView(mode: .buyTokens, onDismiss: { showTokensPaywall = false })
+            PaywallTokensView(onDismiss: { showTokensPaywall = false })
                 .environmentObject(tokensStore)
+                .environmentObject(PurchaseManager.shared)
         }
     }
     

@@ -111,8 +111,9 @@ struct EffectPreviewView: View {
             ImageViewer(media: IdentifiableMedia(image: item.image), onDismiss: { resultImageForViewer = nil })
         }
         .fullScreenCover(isPresented: $showTokensPaywall) {
-            PaywallView(mode: .buyTokens, onDismiss: { showTokensPaywall = false })
+            PaywallTokensView(onDismiss: { showTokensPaywall = false })
                 .environmentObject(tokensStore)
+                .environmentObject(PurchaseManager.shared)
         }
         .onAppear {
             if effectItems != nil {
