@@ -52,6 +52,9 @@ struct SoraApp: App {
                                 try? await Task.sleep(nanoseconds: 2_000_000_000)
                                 await auth
                                 await tokensStore.load()
+                                if let userId = KeychainStorage.shared.getUserId() {
+                                    print("User ID:", userId)
+                                }
                                 withAnimation {
                                     isLoaded = true
                                 }

@@ -215,6 +215,47 @@ final class ChatPersistence {
         return dir.appendingPathComponent("ChatModel.sqlite")
     }
     
+    /// Размер хранилища (sqlite + wal + shm) в байтах.
+    func storeSizeInBytes() -> Int64 {
+        let fm = FileManager.default
+        let basePath = Self.storeURL.path
+        var total: Int64 = 0
+        for path in [basePath, basePath + "-wal", basePath + "-shm"] {
+            if let attrs = try? fm.attributesOfItem(atPath: path), let size = attrs[.size] as? Int64 {
+                total += size
+            }
+        }
+        return total
+    }
+    
+    /// URL видео-файлов из сообщений (только file://).
+    func videoFileURLsFromMessages() -> [URL] {
+        let ctx = viewContext
+        let req = NSFetchRequest<MessageEntity>(entityName: "MessageEntity")
+        req.propertiesToFetch = ["imageURL"]
+        guard let list = try? ctx.fetch(req) else { return [] }
+        return list.compactMap { ent -> URL? in
+            guard let s = ent.imageURL, let url = URL(string: s), url.isFileURL else { return nil }
+            return url
+        }
+    }
+    
+    /// Удалить все видео-файлы из сообщений и все сессии с сообщениями.
+    func deleteAllSessionsAndVideoFiles() {
+        let ctx = viewContext
+        let videoURLs = videoFileURLsFromMessages()
+        let fm = FileManager.default
+        for url in videoURLs {
+            try? fm.removeItem(at: url)
+        }
+        let sessionReq = NSFetchRequest<ChatSessionEntity>(entityName: "ChatSessionEntity")
+        guard let sessions = try? ctx.fetch(sessionReq) else { return }
+        for session in sessions {
+            ctx.delete(session)
+        }
+        save()
+    }
+    
     func save() {
         let ctx = viewContext
         guard ctx.hasChanges else { return }
@@ -371,6 +412,23 @@ final class ChatStore: ObservableObject {
         guard let session = try? ctx.fetch(req).first else { return }
         session.customTitle = customTitle
         persistence.save()
+    }
+    
+    /// Размер кэша (сессии + картинки в Core Data + видео на диске) в байтах.
+    func chatCacheSizeInBytes() -> Int64 {
+        var total = persistence.storeSizeInBytes()
+        let fm = FileManager.default
+        for url in persistence.videoFileURLsFromMessages() {
+            if let attrs = try? fm.attributesOfItem(atPath: url.path), let size = attrs[.size] as? Int64 {
+                total += size
+            }
+        }
+        return total
+    }
+    
+    /// Удалить все сессии и сгенерированные медиа из памяти.
+    func clearAllChatCache() {
+        persistence.deleteAllSessionsAndVideoFiles()
     }
     
     private func entityToMessage(_ ent: MessageEntity) -> Message? {

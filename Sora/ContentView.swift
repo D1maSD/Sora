@@ -11,6 +11,10 @@ struct ContentView: View {
     @State private var currentChatId: UUID?
     @State private var currentChatMessages: [Message] = []
     @State private var showHistory = false
+    @State private var isLoadingResponse = false
+    @State private var generationChatId: UUID? = nil
+    @State private var generationError: String?
+    @State private var showGenerationErrorAlert = false
     @State private var historyIsEffectsMode = false
     @State private var showSettings = false
     @State private var sessionItems: [ChatSessionItem] = []
@@ -53,6 +57,11 @@ struct ContentView: View {
             } else {
                 MainScreenView(
                     messages: $currentChatMessages,
+                    isLoadingResponse: $isLoadingResponse,
+                    generationError: $generationError,
+                    showGenerationErrorAlert: $showGenerationErrorAlert,
+                    showLoadingInThisChat: isLoadingResponse && (currentChatId == generationChatId),
+                    currentChatId: currentChatId,
                     onOpenHistory: { isEffectsMode in
                         historyIsEffectsMode = isEffectsMode
                         showHistory = true
@@ -63,7 +72,28 @@ struct ContentView: View {
                             let sessionId = store.createSession(firstMessageText: firstUserText)
                             store.saveMessages(sessionId: sessionId, messages: currentChatMessages)
                             currentChatId = sessionId
+                            generationChatId = sessionId
+                            return sessionId
                         }
+                        return nil
+                    },
+                    onGenerationStarted: { chatId in
+                        generationChatId = chatId
+                    },
+                    onGenerationCompleted: { chatId, message in
+                        if let cid = chatId {
+                            let list = store.fetchMessages(sessionId: cid)
+                            store.saveMessages(sessionId: cid, messages: list + [message])
+                            if currentChatId == cid {
+                                currentChatMessages = store.fetchMessages(sessionId: cid)
+                            }
+                        }
+                        isLoadingResponse = false
+                        generationChatId = nil
+                    },
+                    onGenerationFailed: { _ in
+                        isLoadingResponse = false
+                        generationChatId = nil
                     },
                     onDeleteChat: {
                         if let id = currentChatId {
@@ -84,10 +114,25 @@ struct ContentView: View {
                 store.saveMessages(sessionId: id, messages: newValue)
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .chatCacheDidClear)) { _ in
+            currentChatId = nil
+            currentChatMessages = []
+            sessionItems = store.fetchAllSessions()
+        }
+        .alert("Generation failed", isPresented: $showGenerationErrorAlert) {
+            Button("OK", role: .cancel) {
+                generationError = nil
+            }
+        } message: {
+            if let err = generationError {
+                Text(err)
+            }
+        }
     }
 }
 
 #Preview {
     ContentView()
         .environmentObject(TokensStore())
+        .environmentObject(PurchaseManager.shared)
 }

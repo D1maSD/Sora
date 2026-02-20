@@ -4,6 +4,11 @@
 //
 
 import SwiftUI
+import StoreKit
+
+extension Notification.Name {
+    static let chatCacheDidClear = Notification.Name("ChatCacheDidClear")
+}
 
 struct SettingsView: View {
     @EnvironmentObject var tokensStore: TokensStore
@@ -14,9 +19,20 @@ struct SettingsView: View {
     @State private var showNotificationsAlert = false
     @State private var showPaywall = false
     @State private var showRestoreAlert = false
+    @State private var cacheSizeBytes: Int64 = 0
+    @State private var showClearCacheAlert = false
+    @State private var showRatingAlert = false
+    @State private var showShareSheet = false
     
-    private var currentUserId: String? {
-        KeychainStorage.shared.getUserId()
+    private var cacheSizeString: String {
+        let mb = Double(cacheSizeBytes) / (1024 * 1024)
+        if mb < 0.01 { return "0 MB" }
+        if mb < 1 { return String(format: "%.2f MB", mb) }
+        return String(format: "%.1f MB", mb)
+    }
+    
+    private var shareActivityItems: [Any] {
+        ["Check out the Sora app!"]
     }
     
     var body: some View {
@@ -32,7 +48,6 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 24) {
                         supportUsSection
                         purchasesSection
-                        userIdSection
                         infoLegalSection
                     }
                     .padding(.bottom, 40)
@@ -47,6 +62,9 @@ struct SettingsView: View {
                 notificationsEnabled = false
             }
         }
+        .onAppear {
+            cacheSizeBytes = ChatStore.shared.chatCacheSizeInBytes()
+        }
         .overlay {
             if showNotificationsAlert {
                 AllowNotificationsAlertView(
@@ -57,6 +75,35 @@ struct SettingsView: View {
                     }
                 )
             }
+        }
+        .overlay {
+            if showClearCacheAlert {
+                ClearCacheAlertView(
+                    onCancel: { showClearCacheAlert = false },
+                    onClear: {
+                        ChatStore.shared.clearAllChatCache()
+                        NotificationCenter.default.post(name: .chatCacheDidClear, object: nil)
+                        cacheSizeBytes = ChatStore.shared.chatCacheSizeInBytes()
+                        showClearCacheAlert = false
+                    }
+                )
+            }
+        }
+        .overlay {
+            if showRatingAlert {
+                RatingAlertView(
+                    onLater: { showRatingAlert = false },
+                    onRate: {
+                        if let windowScene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene {
+                            SKStoreReviewController.requestReview(in: windowScene)
+                        }
+                        showRatingAlert = false
+                    }
+                )
+            }
+        }
+        .sheet(isPresented: $showShareSheet) {
+            ShareSheet(activityItems: shareActivityItems)
         }
         .fullScreenCover(isPresented: $showPaywall) {
             PaywallView(onDismiss: { showPaywall = false })
@@ -78,7 +125,7 @@ struct SettingsView: View {
     }
     
     private var header: some View {
-        ZStack(alignment: .trailing) {
+        ZStack {
             HStack {
                 Button(action: onBack) {
                     Image("chevronLeft")
@@ -91,41 +138,42 @@ struct SettingsView: View {
                 .background(Color(hex: "#1F2023"))
                 .cornerRadius(12)
                 
-                Text("Settings")
-                    .font(.system(size: 28, weight: .bold))
-                    .foregroundColor(.white)
-                    .padding(.leading, 12)
-                
                 Spacer()
+                
+                if !purchaseManager.isSubscribed {
+                    Button(action: { showPaywall = true }) {
+                        HStack(spacing: 6) {
+                            Text("PRO")
+                                .font(.system(size: 17, weight: .regular))
+                                .foregroundColor(.white)
+                            Image("sparkles")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 24, height: 24)
+                                .foregroundColor(.white)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(
+                            LinearGradient(
+                                gradient: Gradient(colors: [
+                                    Color(hex: "#6CABE9"),
+                                    Color(hex: "#2F76BC")
+                                ]),
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .cornerRadius(10)
+                    }
+                }
             }
             .padding(.horizontal, 40)
             
-             Button(action: { showPaywall = true }) {
-                HStack(spacing: 6) {
-                    Text("PRO")
-                        .font(.system(size: 17, weight: .regular))
-                        .foregroundColor(.white)
-                    Image("sparkles")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 24, height: 24)
-                        .foregroundColor(.white)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(
-                    LinearGradient(
-                        gradient: Gradient(colors: [
-                            Color(hex: "#6CABE9"),
-                            Color(hex: "#2F76BC")
-                        ]),
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .cornerRadius(10)
-            }
-            .padding(.trailing, 40)
+            Text("Settings")
+                .font(.system(size: 28, weight: .bold))
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
         }
         .padding(.top, 20)
         .padding(.bottom, 24)
@@ -133,8 +181,8 @@ struct SettingsView: View {
     
     private var supportUsSection: some View {
         settingsSection(title: "Support us") {
-            settingsRow(icon: "starBlue", title: "Rate app")
-            settingsRow(icon: "shareBlue", title: "Share with friends")
+            settingsRow(icon: "starBlue", title: "Rate app", action: { showRatingAlert = true })
+            settingsRow(icon: "shareBlue", title: "Share with friends", action: { showShareSheet = true })
         }
     }
     
@@ -142,48 +190,10 @@ struct SettingsView: View {
         settingsSection(title: "Purchases & Actions") {
             settingsRow(icon: "starsBlue", title: "Upgrade plan", action: { showPaywall = true })
             settingsRowWithToggle(icon: "bageBlue", title: "Notifications", isOn: $notificationsEnabled)
-            settingsRow(icon: "trashBlue", title: "Clear cache", trailing: "5 MB")
+            settingsRow(icon: "trashBlue", title: "Clear cache", trailing: cacheSizeString, action: { showClearCacheAlert = true })
             settingsRow(icon: "cloudBlue", title: "Restore purchases", action: {
                 purchaseManager.restorePurchase { _ in }
             })
-        }
-    }
-    
-    private var userIdSection: some View {
-        settingsSection(title: "Account") {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("User ID (send to support to get tokens)")
-                    .font(.system(size: 15, weight: .regular))
-                    .foregroundColor(.white.opacity(0.7))
-                    .padding(.horizontal, 10)
-                if let id = currentUserId {
-                    HStack(spacing: 12) {
-                        Text(id)
-                            .font(.system(size: 13, weight: .regular))
-                            .foregroundColor(.white)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                        Spacer(minLength: 8)
-                        Button(action: {
-                            UIPasteboard.general.string = id
-                        }) {
-                            Text("Copy")
-                                .font(.system(size: 15, weight: .medium))
-                                .foregroundColor(Color(hex: "#2F76BC"))
-                        }
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 10)
-                    .background(Color.black.opacity(0.7))
-                    .cornerRadius(12)
-                } else {
-                    Text("Not signed in")
-                        .font(.system(size: 15, weight: .regular))
-                        .foregroundColor(.white.opacity(0.6))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 10)
-                }
-            }
         }
     }
     
@@ -340,6 +350,141 @@ struct AllowNotificationsAlertView: View {
                     
                     Button(action: onAllow) {
                         Text("Allow")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(Color(hex: "#0C4CD6"))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .frame(maxWidth: 280)
+            .background(Color(hex: "#232323"))
+            .cornerRadius(14)
+        }
+    }
+}
+
+private let clearCacheAlertDividerHeight: CGFloat = 0.8
+private let clearCacheAlertDividerColor = Color(hex: "#333334")
+
+struct ClearCacheAlertView: View {
+    let onCancel: () -> Void
+    let onClear: () -> Void
+    
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.5)
+                .ignoresSafeArea()
+                .onTapGesture(perform: onCancel)
+            
+            VStack(spacing: 0) {
+                Text("Clear cache?")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 18)
+                    .padding(.bottom, 8)
+                
+                Text("The cached files of your videos will be")
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 15)
+                Text("deleted from your phone's memory. But")
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 15)
+                Text("your download history will be retained.")
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 15)
+                    .padding(.bottom, 20)
+                
+                Rectangle()
+                    .fill(clearCacheAlertDividerColor)
+                    .frame(height: clearCacheAlertDividerHeight)
+                
+                HStack(spacing: 0) {
+                    Button(action: onCancel) {
+                        Text("Cancel")
+                            .font(.system(size: 17, weight: .regular))
+                            .foregroundColor(Color(hex: "#0C4CD6"))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                    }
+                    .buttonStyle(.plain)
+                    
+                    Rectangle()
+                        .fill(clearCacheAlertDividerColor)
+                        .frame(width: clearCacheAlertDividerHeight, height: 44)
+                    
+                    Button(action: onClear) {
+                        Text("Clear")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(Color(hex: "#FF453A"))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .frame(maxWidth: 280)
+            .background(Color(hex: "#232323"))
+            .cornerRadius(14)
+        }
+    }
+}
+
+struct RatingAlertView: View {
+    let onLater: () -> Void
+    let onRate: () -> Void
+    
+    private let dividerColor = Color(hex: "#333334")
+    
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.5)
+                .ignoresSafeArea()
+                .onTapGesture(perform: onLater)
+            
+            VStack(spacing: 0) {
+                Text("Rate us")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 24)
+                    .padding(.bottom, 8)
+                
+                Text("Would you like to rate us on the App Store? Your feedback helps us improve.")
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 20)
+                
+                Rectangle()
+                    .fill(dividerColor)
+                    .frame(height: 0.8)
+                
+                HStack(spacing: 0) {
+                    Button(action: onLater) {
+                        Text("Later")
+                            .font(.system(size: 17, weight: .regular))
+                            .foregroundColor(Color(hex: "#0C4CD6"))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                    }
+                    .buttonStyle(.plain)
+                    
+                    Rectangle()
+                        .fill(dividerColor)
+                        .frame(width: 0.8, height: 44)
+                    
+                    Button(action: onRate) {
+                        Text("Rate")
                             .font(.system(size: 17, weight: .semibold))
                             .foregroundColor(Color(hex: "#0C4CD6"))
                             .frame(maxWidth: .infinity)

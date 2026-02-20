@@ -13,6 +13,7 @@ private let cellDateFormatter: DateFormatter = {
 
 struct HistoryView: View {
     @EnvironmentObject var tokensStore: TokensStore
+    @EnvironmentObject var purchaseManager: PurchaseManager
     let sessions: [ChatSessionItem]
     /// true = открыт из режима effects: сверху CustomSwitch(photo/video), сетка эффектов
     let isEffectsMode: Bool
@@ -98,6 +99,7 @@ struct HistoryView: View {
         .fullScreenCover(isPresented: $showPaywall) {
             PaywallView(onDismiss: { showPaywall = false })
                 .environmentObject(tokensStore)
+                .environmentObject(purchaseManager)
         }
     }
     
@@ -116,21 +118,23 @@ struct HistoryView: View {
                 .background(Color(hex: "#1F2023"))
                 .cornerRadius(12)
                 Spacer()
-                Button(action: { showPaywall = true }) {
-                    HStack(spacing: 6) {
-                        Text("PRO")
-                            .font(.system(size: 17, weight: .regular))
-                            .foregroundColor(.white)
-                        Image("sparkles")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 24, height: 24)
-                            .foregroundColor(.white)
+                if !purchaseManager.isSubscribed {
+                    Button(action: { showPaywall = true }) {
+                        HStack(spacing: 6) {
+                            Text("PRO")
+                                .font(.system(size: 17, weight: .regular))
+                                .foregroundColor(.white)
+                            Image("sparkles")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 24, height: 24)
+                                .foregroundColor(.white)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(Color(hex: "#1F2023"))
+                        .cornerRadius(12)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(Color(hex: "#1F2023"))
-                    .cornerRadius(12)
                 }
             }
             .padding(.horizontal, 20)

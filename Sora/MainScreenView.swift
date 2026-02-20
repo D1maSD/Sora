@@ -327,10 +327,21 @@ struct RoundedCorner: Shape {
 struct MainScreenView: View {
     @EnvironmentObject var tokensStore: TokensStore
     @Binding var messages: [Message]
+    @Binding var isLoadingResponse: Bool
+    @Binding var generationError: String?
+    @Binding var showGenerationErrorAlert: Bool
+    /// Показывать ProgressView только в той сессии, где запущена генерация.
+    var showLoadingInThisChat: Bool = false
+    /// Текущая сессия (nil = новый чат до создания).
+    var currentChatId: UUID? = nil
     /// Bool = isEffectsMode (true когда выбран режим effects)
     var onOpenHistory: ((Bool) -> Void)? = nil
     var onOpenSettings: (() -> Void)? = nil
-    var onFirstMessageSent: (() -> Void)? = nil
+    /// Возвращает sessionId для нового чата (после создания сессии).
+    var onFirstMessageSent: (() -> UUID?)? = nil
+    var onGenerationStarted: ((UUID?) -> Void)? = nil
+    var onGenerationCompleted: ((UUID?, Message) -> Void)? = nil
+    var onGenerationFailed: ((UUID?) -> Void)? = nil
     var onDeleteChat: (() -> Void)? = nil
     var onPlusTapped: (() -> Void)? = nil
     
@@ -346,7 +357,6 @@ struct MainScreenView: View {
     @State private var selectedVideoURL: URL? = nil
     @State private var imageFileName: String = ""
     @State private var isLoadingImage: Bool = false
-    @State private var isLoadingResponse: Bool = false
     @State private var showStyleSheet = false
     @State private var selectedStyle: Int? = nil
     @State private var selectedStyleName: String? = nil // Сохраняем название выбранного стиля
@@ -356,8 +366,6 @@ struct MainScreenView: View {
     @State private var showEffectsList = false
     @State private var showTokensPaywall = false
     @State private var generationTask: Task<Void, Never>?
-    @State private var generationError: String?
-    @State private var showGenerationErrorAlert = false
     @State private var shareItem: ShareableItem?
     @State private var showSaveError = false
     @State private var saveErrorText = ""
@@ -425,18 +433,6 @@ struct MainScreenView: View {
                 selectedEffectIndex: payload.selectedIndex,
                 isVideo: payload.isVideo
             )
-        }
-        .onDisappear {
-            generationTask?.cancel()
-        }
-        .alert("Generation failed", isPresented: $showGenerationErrorAlert) {
-            Button("OK", role: .cancel) {
-                generationError = nil
-            }
-        } message: {
-            if let err = generationError {
-                Text(err)
-            }
         }
         .alert("Save failed", isPresented: $showSaveError) {
             Button("OK", role: .cancel) { saveErrorText = "" }
@@ -937,9 +933,11 @@ struct MainScreenView: View {
             selectedVideoURL = nil
             userDidOpenVideoResolutionMenu = false
             imageFileName = ""
-            if wasEmpty { onFirstMessageSent?() }
+            let newSessionId = wasEmpty ? onFirstMessageSent?() : nil
+            let chatId = newSessionId ?? currentChatId
+            onGenerationStarted?(chatId)
             isLoadingResponse = true
-            generationTask = Task {
+            generationTask = Task.detached(priority: .userInitiated) { [$generationError, $showGenerationErrorAlert, videoResolutionPx, defaultVideoTemplateId, onGenerationCompleted, onGenerationFailed] in
                 do {
                     let videoURL: URL
                     if let videoURLToEnhance = messageVideoURL, usedResolutionMenu {
@@ -950,26 +948,22 @@ struct MainScreenView: View {
                     } else {
                         videoURL = try await GenerationService.shared.runFotobudkaTxt2Video(prompt: messageText)
                     }
+                    let incoming = Message(text: messageText, image: nil, videoURL: videoURL, isIncoming: true)
                     await MainActor.run {
-                        let incoming = Message(text: messageText, image: nil, videoURL: videoURL, isIncoming: true)
-                        messages = messages + [incoming]
-                        isLoadingResponse = false
-                        generationTask = nil
+                        onGenerationCompleted?(chatId, incoming)
                     }
                     await tokensStore.load()
                 } catch is CancellationError {
                     await MainActor.run {
-                        isLoadingResponse = false
-                        generationTask = nil
+                        onGenerationFailed?(chatId)
                     }
                 } catch {
                     let errMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                     print("[Generation] Video error: \(error)")
                     await MainActor.run {
-                        generationError = errMessage
-                        showGenerationErrorAlert = true
-                        isLoadingResponse = false
-                        generationTask = nil
+                        $generationError.wrappedValue = errMessage
+                        $showGenerationErrorAlert.wrappedValue = true
+                        onGenerationFailed?(chatId)
                     }
                 }
             }
@@ -980,34 +974,32 @@ struct MainScreenView: View {
         let newMessage = Message(text: messageText, image: messageImage, videoURL: nil, isIncoming: false)
         let wasEmpty = messages.isEmpty
         messages = messages + [newMessage]
-        if wasEmpty { onFirstMessageSent?() }
+        let newSessionId = wasEmpty ? onFirstMessageSent?() : nil
+        let chatId = newSessionId ?? currentChatId
+        onGenerationStarted?(chatId)
         textFieldText = ""
         selectedImage = nil
         imageFileName = ""
         isLoadingResponse = true
-        generationTask = Task {
+        generationTask = Task.detached(priority: .userInitiated) { [$generationError, $showGenerationErrorAlert, onGenerationCompleted, onGenerationFailed] in
             do {
                 let (resultImage, resultText) = try await GenerationService.shared.runNanobananaAndLoadImage(prompt: messageText, image: messageImage)
+                let incoming = Message(text: resultText ?? "", image: resultImage, videoURL: nil, isIncoming: true)
                 await MainActor.run {
-                    let incoming = Message(text: resultText ?? "", image: resultImage, videoURL: nil, isIncoming: true)
-                    messages = messages + [incoming]
-                    isLoadingResponse = false
-                    generationTask = nil
+                    onGenerationCompleted?(chatId, incoming)
                 }
                 await tokensStore.load()
             } catch is CancellationError {
                 await MainActor.run {
-                    isLoadingResponse = false
-                    generationTask = nil
+                    onGenerationFailed?(chatId)
                 }
             } catch {
                 let errMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                 print("[Generation] Error: \(error)")
                 await MainActor.run {
-                    generationError = errMessage
-                    showGenerationErrorAlert = true
-                    isLoadingResponse = false
-                    generationTask = nil
+                    $generationError.wrappedValue = errMessage
+                    $showGenerationErrorAlert.wrappedValue = true
+                    onGenerationFailed?(chatId)
                 }
             }
         }
@@ -1086,27 +1078,25 @@ struct MainScreenView: View {
         }
         let promptImage = previous.image
         regeneratingMessageId = message.id
-        generationTask = Task {
+        generationTask = Task.detached(priority: .userInitiated) { [$messages, $generationError, $showGenerationErrorAlert] in
             do {
                 let (resultImage, resultText) = try await GenerationService.shared.runNanobananaAndLoadImage(prompt: prompt, image: promptImage)
                 await MainActor.run {
                     let newIncoming = Message(text: resultText ?? "", image: resultImage, videoURL: nil, isIncoming: true)
-                    messages = messages.prefix(idx) + [newIncoming] + messages.suffix(from: idx + 1)
+                    let current = $messages.wrappedValue
+                    $messages.wrappedValue = current.prefix(idx) + [newIncoming] + current.suffix(from: idx + 1)
                     regeneratingMessageId = nil
-                    generationTask = nil
                 }
             } catch is CancellationError {
                 await MainActor.run {
                     regeneratingMessageId = nil
-                    generationTask = nil
                 }
             } catch {
                 let errMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                 await MainActor.run {
-                    generationError = errMessage
-                    showGenerationErrorAlert = true
+                    $generationError.wrappedValue = errMessage
+                    $showGenerationErrorAlert.wrappedValue = true
                     regeneratingMessageId = nil
-                    generationTask = nil
                 }
             }
         }
@@ -1117,7 +1107,7 @@ struct MainScreenView: View {
         GeometryReader { geometry in
             MessagesListView(
                 messages: messages,
-                isLoadingResponse: isLoadingResponse,
+                isLoadingResponse: showLoadingInThisChat,
                 regeneratingMessageId: regeneratingMessageId,
                 imageToView: $imageToView,
                 onDeleteMessage: { id in
@@ -2109,6 +2099,13 @@ struct RenameChatAlertView: View {
 }
 
 #Preview {
-    MainScreenView(messages: .constant([]))
-        .environmentObject(TokensStore())
+    MainScreenView(
+        messages: .constant([]),
+        isLoadingResponse: .constant(false),
+        generationError: .constant(nil),
+        showGenerationErrorAlert: .constant(false),
+        showLoadingInThisChat: false,
+        currentChatId: nil
+    )
+    .environmentObject(TokensStore())
 }
