@@ -38,9 +38,27 @@ struct EffectPreviewView: View {
         ("effectCard3", "Effect 3")
     ]
     
+    /// Индекс эффекта, считающийся выбранным: центр баннера (scrollBannerId) или начальный при открытии.
+    private var currentEffectIndex: Int {
+        guard let items = effectItems else { return selectedEffectIndex }
+        if let id = scrollBannerId, items.indices.contains(id) { return id }
+        return selectedEffectIndex
+    }
+    
     private var templateId: Int? {
-        guard let items = effectItems, items.indices.contains(selectedEffectIndex) else { return nil }
-        return items[selectedEffectIndex].id
+        guard let items = effectItems, items.indices.contains(currentEffectIndex) else { return nil }
+        return items[currentEffectIndex].id
+    }
+    
+    /// Заголовок навбара: название текущего эффекта или "Effect" для статичного баннера.
+    private var navbarTitle: String {
+        if let items = effectItems, items.indices.contains(currentEffectIndex) {
+            let t = items[currentEffectIndex].title
+            return (t != nil && !t!.isEmpty) ? t! : "Effect"
+        }
+        return previewBannerData.indices.contains(currentEffectIndex)
+            ? previewBannerData[currentEffectIndex].title
+            : "Effect"
     }
     
     /// Ключ статуса текущей записи для onChange (реакция на success/error из store).
@@ -189,7 +207,7 @@ struct EffectPreviewView: View {
             }
             .padding(.horizontal, 20)
             
-            Text("Effect")
+            Text(navbarTitle)
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)

@@ -5,6 +5,7 @@
 
 import SwiftUI
 import StoreKit
+import UserNotifications
 
 extension Notification.Name {
     static let chatCacheDidClear = Notification.Name("ChatCacheDidClear")
@@ -16,12 +17,10 @@ struct SettingsView: View {
     let onBack: () -> Void
     
     @State private var notificationsEnabled = false
-    @State private var showNotificationsAlert = false
     @State private var showPaywall = false
     @State private var showRestoreAlert = false
     @State private var cacheSizeBytes: Int64 = 0
     @State private var showClearCacheAlert = false
-    @State private var showRatingAlert = false
     @State private var showShareSheet = false
     
     private var cacheSizeString: String {
@@ -58,22 +57,20 @@ struct SettingsView: View {
         }
         .onChange(of: notificationsEnabled) { _, newValue in
             if newValue {
-                showNotificationsAlert = true
                 notificationsEnabled = false
+                UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, _ in
+                    DispatchQueue.main.async {
+                        notificationsEnabled = granted
+                    }
+                }
             }
         }
         .onAppear {
             cacheSizeBytes = ChatStore.shared.chatCacheSizeInBytes()
-        }
-        .overlay {
-            if showNotificationsAlert {
-                AllowNotificationsAlertView(
-                    onCancel: { showNotificationsAlert = false },
-                    onAllow: {
-                        notificationsEnabled = true
-                        showNotificationsAlert = false
-                    }
-                )
+            UNUserNotificationCenter.current().getNotificationSettings { settings in
+                DispatchQueue.main.async {
+                    notificationsEnabled = settings.authorizationStatus == .authorized
+                }
             }
         }
         .overlay {
@@ -85,19 +82,6 @@ struct SettingsView: View {
                         NotificationCenter.default.post(name: .chatCacheDidClear, object: nil)
                         cacheSizeBytes = ChatStore.shared.chatCacheSizeInBytes()
                         showClearCacheAlert = false
-                    }
-                )
-            }
-        }
-        .overlay {
-            if showRatingAlert {
-                RatingAlertView(
-                    onLater: { showRatingAlert = false },
-                    onRate: {
-                        if let windowScene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene {
-                            SKStoreReviewController.requestReview(in: windowScene)
-                        }
-                        showRatingAlert = false
                     }
                 )
             }
@@ -181,14 +165,20 @@ struct SettingsView: View {
     
     private var supportUsSection: some View {
         settingsSection(title: "Support us") {
-            settingsRow(icon: "starBlue", title: "Rate app", action: { showRatingAlert = true })
+            settingsRow(icon: "starBlue", title: "Rate app", action: {
+                if let windowScene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene {
+                    SKStoreReviewController.requestReview(in: windowScene)
+                }
+            })
             settingsRow(icon: "shareBlue", title: "Share with friends", action: { showShareSheet = true })
         }
     }
     
     private var purchasesSection: some View {
         settingsSection(title: "Purchases & Actions") {
-            settingsRow(icon: "starsBlue", title: "Upgrade plan", action: { showPaywall = true })
+            settingsRow(icon: "starsBlue", title: "Upgrade plan", action: {
+                if !purchaseManager.isSubscribed { showPaywall = true }
+            })
             settingsRowWithToggle(icon: "bageBlue", title: "Notifications", isOn: $notificationsEnabled)
             settingsRow(icon: "trashBlue", title: "Clear cache", trailing: cacheSizeString, action: { showClearCacheAlert = true })
             settingsRow(icon: "cloudBlue", title: "Restore purchases", action: {
@@ -297,74 +287,6 @@ struct SettingsView: View {
     }
 }
 
-private let notificationsAlertDividerHeight: CGFloat = 0.8
-private let notificationsAlertDividerColor = Color(hex: "#333334")
-
-struct AllowNotificationsAlertView: View {
-    let onCancel: () -> Void
-    let onAllow: () -> Void
-    
-    var body: some View {
-        ZStack {
-            Color.black.opacity(0.5)
-                .ignoresSafeArea()
-                .onTapGesture(perform: onCancel)
-            
-            VStack(spacing: 0) {
-                Text("Allow notifications?")
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 24)
-                    .padding(.bottom, 8)
-                
-                Text("This app will be able to send you")
-                    .font(.system(size: 13, weight: .regular))
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 10)
-                Text("messages in your notification center")
-                    .font(.system(size: 13, weight: .regular))
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 20)
-                
-                Rectangle()
-                    .fill(notificationsAlertDividerColor)
-                    .frame(height: notificationsAlertDividerHeight)
-                
-                HStack(spacing: 0) {
-                    Button(action: onCancel) {
-                        Text("Cancel")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundColor(Color(hex: "#0C4CD6"))
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 44)
-                    }
-                    .buttonStyle(.plain)
-                    
-                    Rectangle()
-                        .fill(notificationsAlertDividerColor)
-                        .frame(width: notificationsAlertDividerHeight, height: 44)
-                    
-                    Button(action: onAllow) {
-                        Text("Allow")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundColor(Color(hex: "#0C4CD6"))
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 44)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .frame(maxWidth: 280)
-            .background(Color(hex: "#232323"))
-            .cornerRadius(14)
-        }
-    }
-}
-
 private let clearCacheAlertDividerHeight: CGFloat = 0.8
 private let clearCacheAlertDividerColor = Color(hex: "#333334")
 
@@ -425,68 +347,6 @@ struct ClearCacheAlertView: View {
                         Text("Clear")
                             .font(.system(size: 17, weight: .semibold))
                             .foregroundColor(Color(hex: "#FF453A"))
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 44)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .frame(maxWidth: 280)
-            .background(Color(hex: "#232323"))
-            .cornerRadius(14)
-        }
-    }
-}
-
-struct RatingAlertView: View {
-    let onLater: () -> Void
-    let onRate: () -> Void
-    
-    private let dividerColor = Color(hex: "#333334")
-    
-    var body: some View {
-        ZStack {
-            Color.black.opacity(0.5)
-                .ignoresSafeArea()
-                .onTapGesture(perform: onLater)
-            
-            VStack(spacing: 0) {
-                Text("Rate us")
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 24)
-                    .padding(.bottom, 8)
-                
-                Text("Would you like to rate us on the App Store? Your feedback helps us improve.")
-                    .font(.system(size: 15, weight: .regular))
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 20)
-                
-                Rectangle()
-                    .fill(dividerColor)
-                    .frame(height: 0.8)
-                
-                HStack(spacing: 0) {
-                    Button(action: onLater) {
-                        Text("Later")
-                            .font(.system(size: 17, weight: .regular))
-                            .foregroundColor(Color(hex: "#0C4CD6"))
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 44)
-                    }
-                    .buttonStyle(.plain)
-                    
-                    Rectangle()
-                        .fill(dividerColor)
-                        .frame(width: 0.8, height: 44)
-                    
-                    Button(action: onRate) {
-                        Text("Rate")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundColor(Color(hex: "#0C4CD6"))
                             .frame(maxWidth: .infinity)
                             .frame(height: 44)
                     }

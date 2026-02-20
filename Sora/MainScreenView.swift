@@ -971,6 +971,7 @@ struct MainScreenView: View {
         }
 
         // Режим photo: nanobanana
+        let promptForGeneration = selectedStyleName.map { "\(messageText) style: \($0)" } ?? messageText
         let newMessage = Message(text: messageText, image: messageImage, videoURL: nil, isIncoming: false)
         let wasEmpty = messages.isEmpty
         messages = messages + [newMessage]
@@ -983,7 +984,7 @@ struct MainScreenView: View {
         isLoadingResponse = true
         generationTask = Task.detached(priority: .userInitiated) { [$generationError, $showGenerationErrorAlert, onGenerationCompleted, onGenerationFailed] in
             do {
-                let (resultImage, resultText) = try await GenerationService.shared.runNanobananaAndLoadImage(prompt: messageText, image: messageImage)
+                let (resultImage, resultText) = try await GenerationService.shared.runNanobananaAndLoadImage(prompt: promptForGeneration, image: messageImage)
                 let incoming = Message(text: resultText ?? "", image: resultImage, videoURL: nil, isIncoming: true)
                 await MainActor.run {
                     onGenerationCompleted?(chatId, incoming)
@@ -1076,11 +1077,12 @@ struct MainScreenView: View {
             showGenerationErrorAlert = true
             return
         }
+        let promptForRegeneration = selectedStyleName.map { "\(prompt) style: \($0)" } ?? prompt
         let promptImage = previous.image
         regeneratingMessageId = message.id
         generationTask = Task.detached(priority: .userInitiated) { [$messages, $generationError, $showGenerationErrorAlert] in
             do {
-                let (resultImage, resultText) = try await GenerationService.shared.runNanobananaAndLoadImage(prompt: prompt, image: promptImage)
+                let (resultImage, resultText) = try await GenerationService.shared.runNanobananaAndLoadImage(prompt: promptForRegeneration, image: promptImage)
                 await MainActor.run {
                     let newIncoming = Message(text: resultText ?? "", image: resultImage, videoURL: nil, isIncoming: true)
                     let current = $messages.wrappedValue
