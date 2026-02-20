@@ -7,11 +7,13 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject var tokensStore: TokensStore
+    @EnvironmentObject var purchaseManager: PurchaseManager
     let onBack: () -> Void
     
     @State private var notificationsEnabled = false
     @State private var showNotificationsAlert = false
     @State private var showPaywall = false
+    @State private var showRestoreAlert = false
     
     private var currentUserId: String? {
         KeychainStorage.shared.getUserId()
@@ -59,6 +61,19 @@ struct SettingsView: View {
         .fullScreenCover(isPresented: $showPaywall) {
             PaywallView(onDismiss: { showPaywall = false })
                 .environmentObject(tokensStore)
+                .environmentObject(purchaseManager)
+        }
+        .alert("Restore", isPresented: $showRestoreAlert) {
+            Button("OK", role: .cancel) {
+                purchaseManager.failRestoreText = nil
+            }
+        } message: {
+            if let text = purchaseManager.failRestoreText {
+                Text(text)
+            }
+        }
+        .onChange(of: purchaseManager.failRestoreText) { _, newValue in
+            if newValue != nil { showRestoreAlert = true }
         }
     }
     
@@ -125,10 +140,12 @@ struct SettingsView: View {
     
     private var purchasesSection: some View {
         settingsSection(title: "Purchases & Actions") {
-            settingsRow(icon: "starsBlue", title: "Upgrade plan")
+            settingsRow(icon: "starsBlue", title: "Upgrade plan", action: { showPaywall = true })
             settingsRowWithToggle(icon: "bageBlue", title: "Notifications", isOn: $notificationsEnabled)
             settingsRow(icon: "trashBlue", title: "Clear cache", trailing: "5 MB")
-            settingsRow(icon: "cloudBlue", title: "Restore purchases")
+            settingsRow(icon: "cloudBlue", title: "Restore purchases", action: {
+                purchaseManager.restorePurchase { _ in }
+            })
         }
     }
     
@@ -173,8 +190,12 @@ struct SettingsView: View {
     private var infoLegalSection: some View {
         settingsSection(title: "Info & legal") {
             settingsRow(icon: "messageBlue", title: "Contact us")
-            settingsRow(icon: "fileBlue", title: "Privacy Policy")
-            settingsRow(icon: "filesBlue", title: "Usage Policy")
+            settingsRow(icon: "fileBlue", title: "Privacy Policy", action: {
+                if let url = URL(string: PolicyURL.privacy) { UIApplication.shared.open(url) }
+            })
+            settingsRow(icon: "filesBlue", title: "Usage Policy", action: {
+                if let url = URL(string: PolicyURL.usageTerms) { UIApplication.shared.open(url) }
+            })
         }
     }
     
@@ -192,8 +213,8 @@ struct SettingsView: View {
         }
     }
     
-    private func settingsRow(icon: String, title: String, trailing: String? = nil) -> some View {
-        Button(action: {}) {
+    private func settingsRow(icon: String, title: String, trailing: String? = nil, action: (() -> Void)? = nil) -> some View {
+        Button(action: { action?() }) {
             HStack(spacing: 12) {
                 Image(icon)
                     .resizable()
@@ -336,4 +357,6 @@ struct AllowNotificationsAlertView: View {
 
 #Preview {
     SettingsView(onBack: {})
+        .environmentObject(TokensStore())
+        .environmentObject(PurchaseManager.shared)
 }

@@ -189,14 +189,20 @@ struct PaywallTokensView: View {
             }
 
             HStack {
-                Button(action: { onPrivacyPolicy?() }) {
+                Button(action: {
+                    if let url = URL(string: PolicyURL.privacy) { UIApplication.shared.open(url) }
+                    onPrivacyPolicy?()
+                }) {
                     Text("Privacy Policy")
                         .font(.system(size: 13, weight: .regular))
                         .foregroundColor(.white.opacity(0.4))
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 Spacer()
-                Button(action: { onTermsOfUse?() }) {
+                Button(action: {
+                    if let url = URL(string: PolicyURL.usageTerms) { UIApplication.shared.open(url) }
+                    onTermsOfUse?()
+                }) {
                     Text("Terms of Use")
                         .font(.system(size: 13, weight: .regular))
                         .foregroundColor(.white.opacity(0.4))

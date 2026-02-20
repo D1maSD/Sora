@@ -8,6 +8,12 @@
 import SwiftUI
 import ApphudSDK
 
+/// Ссылки для политик (открываются во внешнем браузере).
+enum PolicyURL {
+    static let privacy = "https://www.ya.ru/"
+    static let usageTerms = "https://www.google.com/"
+}
+
 /// Единый источник ключа Apphud. Сейчас используется ключ из Demo (tokens paywall).
 /// Чтобы вернуть старый ключ — замените `currentKey` на `legacyKey`.
 enum ApphudConfig {
@@ -54,6 +60,7 @@ struct SoraApp: App {
                 }
             }
             .environmentObject(tokensStore)
+            .environmentObject(PurchaseManager.shared)
         }
     }
 }

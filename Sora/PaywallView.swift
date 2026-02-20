@@ -17,6 +17,8 @@ struct PaywallView: View {
     var onTermsOfUse: (() -> Void)? = nil
     
     @EnvironmentObject var tokensStore: TokensStore
+    @EnvironmentObject var purchaseManager: PurchaseManager
+    @State private var showRestoreAlert = false
     
     /// true = выбран Annual (верхний), false = выбран Weekly (нижний)
     @State private var isAnnualSelected = true
@@ -213,21 +215,30 @@ struct PaywallView: View {
                     .padding(.bottom, 15)
                     
                     HStack {
-                        Button(action: { onPrivacyPolicy?() }) {
+                        Button(action: {
+                            if let url = URL(string: PolicyURL.privacy) { UIApplication.shared.open(url) }
+                            onPrivacyPolicy?()
+                        }) {
                             Text("Privacy Policy")
                                 .font(.system(size: 11, weight: .regular))
                                 .foregroundColor(.white.opacity(0.4))
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         
-                        Button(action: { onRestorePurchases?() }) {
+                        Button(action: {
+                            purchaseManager.restorePurchase { _ in }
+                            onRestorePurchases?()
+                        }) {
                             Text("Restore Purchases")
                                 .font(.system(size: 11, weight: .regular))
                                 .foregroundColor(.white.opacity(0.7))
                         }
                         .frame(maxWidth: .infinity, alignment: .center)
                         
-                        Button(action: { onTermsOfUse?() }) {
+                        Button(action: {
+                            if let url = URL(string: PolicyURL.usageTerms) { UIApplication.shared.open(url) }
+                            onTermsOfUse?()
+                        }) {
                             Text("Terms of Use")
                                 .font(.system(size: 11, weight: .regular))
                                 .foregroundColor(.white.opacity(0.4))
@@ -236,6 +247,18 @@ struct PaywallView: View {
                     }
                     .padding(.horizontal, 24)
                     .padding(.bottom, 52)
+        }
+        .alert("Restore", isPresented: $showRestoreAlert) {
+            Button("OK", role: .cancel) {
+                purchaseManager.failRestoreText = nil
+            }
+        } message: {
+            if let text = purchaseManager.failRestoreText {
+                Text(text)
+            }
+        }
+        .onChange(of: purchaseManager.failRestoreText) { _, newValue in
+            if newValue != nil { showRestoreAlert = true }
         }
         .frame(width: geo.size.width)
     }
@@ -287,4 +310,5 @@ struct PaywallView: View {
 #Preview {
     PaywallView(onDismiss: {}, onContinue: {}, onPrivacyPolicy: {}, onRestorePurchases: {}, onTermsOfUse: {})
         .environmentObject(TokensStore())
+        .environmentObject(PurchaseManager.shared)
 }
