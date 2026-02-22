@@ -10,9 +10,30 @@ struct RatingPromptView: View {
     let onDismiss: () -> Void
 
     var body: some View {
-        ZStack(alignment: .center) {
+        ZStack {
             Color(hex: "#0A0A0A")
                 .ignoresSafeArea()
+
+            // Кнопка закрытия — как в PaywallView (правый верхний угол)
+            VStack {
+                HStack {
+                    Spacer()
+                    Button(action: {
+                        RatingPromptService.shared.dismissPrompt()
+                        onDismiss()
+                    }) {
+                        Image("closeBlue")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 24, height: 24)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 10)
+                    .padding(.trailing, 15)
+                }
+                Spacer()
+            }
 
             VStack(spacing: 24) {
                 Image("previewImage")
@@ -26,7 +47,7 @@ struct RatingPromptView: View {
                         .multilineTextAlignment(.center)
                     
                     Text("Please rate our app so we can improve it for\nyou and make it even cooler")
-                        .font(.system(size: 16, weight: .regular))
+                        .font(.system(size: 13, weight: .regular))
                         .foregroundColor(Color.white.opacity(0.5))
                         .multilineTextAlignment(.center)
                         .lineSpacing(4)
@@ -41,13 +62,14 @@ struct RatingPromptView: View {
                             .font(.system(size: 17, weight: .medium))
                             .foregroundColor(Color(hex: "#2F76BC"))
                             .frame(maxWidth: .infinity)
-                            .frame(height: 50)
+                            .frame(height: 55)
                             .background(Color(hex: "#111A24"))
-                            .cornerRadius(24)
+                            .cornerRadius(29)
                     }
                     .buttonStyle(.plain)
 
                     Button(action: {
+                        // Сейчас: SKStoreReviewController — системное окно оценки (звёзды + текст). Когда приложение выложено — можно открывать App Store URL для отзыва.
                         if let windowScene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene {
                             SKStoreReviewController.requestReview(in: windowScene)
                         }
@@ -58,7 +80,7 @@ struct RatingPromptView: View {
                             .font(.system(size: 17, weight: .medium))
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
-                            .frame(height: 50)
+                            .frame(height: 55)
                             .background(
                                 LinearGradient(
                                     gradient: Gradient(colors: [
@@ -69,25 +91,13 @@ struct RatingPromptView: View {
                                     endPoint: .trailing
                                 )
                             )
-                            .cornerRadius(24)
+                            .cornerRadius(29)
                     }
                     .buttonStyle(.plain)
                 }
                 .padding(.horizontal, 8)
             }
             .padding(.horizontal, 24)
-
-            Button(action: {
-                RatingPromptService.shared.dismissPrompt()
-                onDismiss()
-            }) {
-                Image("closeBlue")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 24, height: 24)
-            }
-            .buttonStyle(.plain)
-            .padding(20)
         }
     }
 }

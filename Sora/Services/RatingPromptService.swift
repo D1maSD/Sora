@@ -51,17 +51,15 @@ final class RatingPromptService: ObservableObject {
         shouldShowRatingPrompt = false
     }
 
-    /// Показывать: каждое 3-е открытие (3, 6, 9...) или при 3-й генерации видео (один раз).
-    /// ТЕСТ: показываем при каждом открытии (для отладки).
+    /// Показывать: каждое 3-е открытие (3, 6, 9...) или при 3-й генерации видео.
+    /// Прекращаем показ только после нажатия Yes (markRated).
     func shouldShowPrompt() -> Bool {
         guard !defaults.bool(forKey: hasRatedKey) else { return false }
-        // DEBUG: показывать каждое открытие
         let appOpens = defaults.integer(forKey: appOpenCountKey)
-        if appOpens > 0 { return true }
+        if appOpens >= 3 && appOpens % 3 == 0 { return true }
         let videoGens = defaults.integer(forKey: videoGenCountKey)
         let hasShownForVideo = defaults.bool(forKey: hasShownForVideoKey)
         if videoGens >= 3 && !hasShownForVideo { return true }
-        // if appOpens > 0 && appOpens % 3 == 0 { return true }
         return false
     }
 
