@@ -215,6 +215,45 @@ final class ChatPersistence {
         return dir.appendingPathComponent("ChatModel.sqlite")
     }
     
+    private static let chatVideosSubdir = "ChatVideos"
+    
+    private var chatVideosDirectoryURL: URL {
+        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+            .appendingPathComponent(Self.chatVideosSubdir, isDirectory: true)
+        if !FileManager.default.fileExists(atPath: dir.path) {
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+        return dir
+    }
+    
+    /// Копирует видео в Documents/ChatVideos/{messageId}.mp4. Возвращает относительный путь.
+    func copyVideoToPersistentStorage(sourceURL: URL, messageId: UUID) -> String? {
+        guard sourceURL.isFileURL, FileManager.default.fileExists(atPath: sourceURL.path) else { return nil }
+        let destURL = chatVideosDirectoryURL.appendingPathComponent("\(messageId.uuidString).mp4")
+        let relPath = "\(Self.chatVideosSubdir)/\(messageId.uuidString).mp4"
+        if sourceURL.path == destURL.path {
+            return relPath
+        }
+        do {
+            if FileManager.default.fileExists(atPath: destURL.path) {
+                try FileManager.default.removeItem(at: destURL)
+            }
+            try FileManager.default.copyItem(at: sourceURL, to: destURL)
+            return relPath
+        } catch {
+            return nil
+        }
+    }
+    
+    /// Разрешает путь к видео: относительный — от Documents, иначе как есть.
+    func resolveVideoPath(stored: String) -> URL {
+        if stored.hasPrefix("/") || stored.hasPrefix("file:") {
+            if let url = URL(string: stored) { return url }
+        }
+        let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        return documentsURL.appendingPathComponent(stored)
+    }
+    
     /// Размер хранилища (sqlite + wal + shm) в байтах.
     func storeSizeInBytes() -> Int64 {
         let fm = FileManager.default
@@ -228,15 +267,16 @@ final class ChatPersistence {
         return total
     }
     
-    /// URL видео-файлов из сообщений (только file://).
+    /// URL видео-файлов из сообщений (включая пути в Documents/ChatVideos).
     func videoFileURLsFromMessages() -> [URL] {
         let ctx = viewContext
         let req = NSFetchRequest<MessageEntity>(entityName: "MessageEntity")
         req.propertiesToFetch = ["imageURL"]
         guard let list = try? ctx.fetch(req) else { return [] }
         return list.compactMap { ent -> URL? in
-            guard let s = ent.imageURL, let url = URL(string: s), url.isFileURL else { return nil }
-            return url
+            guard let s = ent.imageURL, !s.isEmpty else { return nil }
+            let url = resolveVideoPath(stored: s)
+            return url.isFileURL ? url : nil
         }
     }
     
@@ -357,7 +397,11 @@ final class ChatStore: ObservableObject {
             ent.imageData = data
         }
         if let url = message.videoURL {
-            ent.imageURL = url.absoluteString
+            if let persistentPath = persistence.copyVideoToPersistentStorage(sourceURL: url, messageId: message.id) {
+                ent.imageURL = persistentPath
+            } else {
+                ent.imageURL = url.absoluteString
+            }
         }
         ent.session = session
         persistence.save()
@@ -382,7 +426,11 @@ final class ChatStore: ObservableObject {
                 ent.imageData = data
             }
             if let url = msg.videoURL {
-                ent.imageURL = url.absoluteString
+                if let persistentPath = persistence.copyVideoToPersistentStorage(sourceURL: url, messageId: msg.id) {
+                    ent.imageURL = persistentPath
+                } else {
+                    ent.imageURL = url.absoluteString
+                }
             }
             let sessionReq = NSFetchRequest<ChatSessionEntity>(entityName: "ChatSessionEntity")
             sessionReq.predicate = NSPredicate(format: "id == %@", sessionId.uuidString)
@@ -438,8 +486,11 @@ final class ChatStore: ObservableObject {
             image = UIImage(data: data)
         }
         var videoURL: URL?
-        if let s = ent.imageURL, let url = URL(string: s) {
-            videoURL = url
+        if let s = ent.imageURL, !s.isEmpty {
+            let url = persistence.resolveVideoPath(stored: s)
+            if FileManager.default.fileExists(atPath: url.path) {
+                videoURL = url
+            }
         }
         let isIncoming = ent.role == "assistant"
         return Message(id: id, text: ent.content ?? "", image: image, videoURL: videoURL, isIncoming: isIncoming)
