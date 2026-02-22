@@ -5,9 +5,12 @@
 
 import SwiftUI
 
+private let lastOpenedChatSessionIdKey = "lastOpenedChatSessionId"
+
 struct ContentView: View {
     private let store = ChatStore.shared
     @ObservedObject private var ratingPrompt = RatingPromptService.shared
+    @AppStorage(lastOpenedChatSessionIdKey) private var lastOpenedChatSessionIdRaw: String = ""
 
     @State private var currentChatId: UUID?
     @State private var currentChatMessages: [Message] = []
@@ -20,6 +23,7 @@ struct ContentView: View {
     @State private var showSettings = false
     @State private var sessionItems: [ChatSessionItem] = []
     @State private var showRatingPrompt = false
+    @State private var hasRestoredLastSession = false
 
     var body: some View {
         Group {
@@ -33,11 +37,13 @@ struct ContentView: View {
                     onSelectChat: { item in
                         currentChatId = item.id
                         currentChatMessages = store.fetchMessages(sessionId: item.id)
+                        lastOpenedChatSessionIdRaw = item.id.uuidString
                         showHistory = false
                     },
                     onNewChat: {
                         currentChatId = nil
                         currentChatMessages = []
+                        lastOpenedChatSessionIdRaw = ""
                         showHistory = false
                     },
                     onDeleteChat: { item in
@@ -46,6 +52,9 @@ struct ContentView: View {
                         if currentChatId == item.id {
                             currentChatId = nil
                             currentChatMessages = []
+                        }
+                        if lastOpenedChatSessionIdRaw == item.id.uuidString {
+                            lastOpenedChatSessionIdRaw = ""
                         }
                     },
                     onRenameChat: { item, newName in
@@ -124,7 +133,19 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .chatCacheDidClear)) { _ in
             currentChatId = nil
             currentChatMessages = []
+            lastOpenedChatSessionIdRaw = ""
             sessionItems = store.fetchAllSessions()
+        }
+        .onAppear {
+            guard !hasRestoredLastSession else { return }
+            hasRestoredLastSession = true
+            if let id = UUID(uuidString: lastOpenedChatSessionIdRaw), !lastOpenedChatSessionIdRaw.isEmpty {
+                let sessions = store.fetchAllSessions()
+                if sessions.contains(where: { $0.id == id }) {
+                    currentChatId = id
+                    currentChatMessages = store.fetchMessages(sessionId: id)
+                }
+            }
         }
         .onChange(of: ratingPrompt.shouldShowRatingPrompt) { _, new in
             showRatingPrompt = new

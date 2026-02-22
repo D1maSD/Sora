@@ -1187,8 +1187,6 @@ struct MainScreenView: View {
                             // Превью изображения под TextField
                             if selectedImage != nil || isLoadingImage {
                                 HStack(spacing: 12) {
-//                                    Spacer()
-                                    
                                     if let image = selectedImage {
                                         Image(uiImage: image)
                                             .resizable()
@@ -1209,6 +1207,22 @@ struct MainScreenView: View {
                                             .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                             .frame(width: 25, height: 25)
                                     }
+                                    
+                                    Spacer(minLength: 0)
+                                    
+                                    Button(action: {
+                                        selectedImage = nil
+                                        imageFileName = ""
+                                        isLoadingImage = false
+                                    }) {
+                                        Image("xmark")
+                                            .resizable()
+                                            .scaledToFit()
+                                            .frame(width: 22, height: 22)
+                                            .foregroundColor(.white)
+                                            .padding(.trailing, 10)
+                                    }
+                                    .buttonStyle(.plain)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
 //                                .padding(.horizontal, 16)
