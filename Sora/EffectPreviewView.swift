@@ -27,6 +27,7 @@ struct EffectPreviewView: View {
     @State private var processingProgress: Int = 0
     @State private var showProcessingError = false
     @State private var resultImageForViewer: IdentifiableImageResult?
+    @State private var resultVideoURLForViewer: URL?
     @State private var scrollBannerId: Int?
     /// ID записи в store для текущей генерации (polling продолжается при закрытии оверлея)
     @State private var currentEffectRecordId: UUID?
@@ -96,7 +97,7 @@ struct EffectPreviewView: View {
             AddPhotoBottomSheet(
                 selectedImage: $selectedImageForEffect,
                 selectedVideoURL: $selectedVideoURLForEffect,
-                mode: isVideo ? .video : .photo
+                mode: .photo
             )
                 .presentationDetents([.fraction(0.8)])
                 .presentationDragIndicator(.visible)
@@ -118,6 +119,11 @@ struct EffectPreviewView: View {
                     showProcessingView = false
                     selectedImageForEffect = nil
                     showProcessingError = false
+                } else if let videoPath = rec.videoPath {
+                    resultVideoURLForViewer = effectStore.resolveMediaURL(path: videoPath)
+                    showProcessingView = false
+                    selectedImageForEffect = nil
+                    showProcessingError = false
                 }
             case .error:
                 showProcessingError = true
@@ -127,6 +133,14 @@ struct EffectPreviewView: View {
         }
         .fullScreenCover(item: $resultImageForViewer) { item in
             ImageViewer(media: IdentifiableMedia(image: item.image), onDismiss: { resultImageForViewer = nil })
+        }
+        .fullScreenCover(isPresented: Binding(
+            get: { resultVideoURLForViewer != nil },
+            set: { if !$0 { resultVideoURLForViewer = nil } }
+        )) {
+            if let url = resultVideoURLForViewer {
+                ImageViewer(media: IdentifiableMedia(videoURL: url, effectRecordId: currentEffectRecordId), onDismiss: { resultVideoURLForViewer = nil })
+            }
         }
         .fullScreenCover(isPresented: $showTokensPaywall) {
             PaywallTokensView(onDismiss: { showTokensPaywall = false })
@@ -147,7 +161,8 @@ struct EffectPreviewView: View {
             startProgressTimer()
             return
         }
-        // Store запускает polling в фоне; закрытие processingProgressContent его не прерывает.
+        // templateId всегда из effectItems: при isVideo — VideoTemplateItemResponse.id (/video-templates), при !isVideo — EffectItemResponse.id (/effects).
+        print("[EffectPreview] submitEffect templateId=\(tid) isVideo=\(isVideo)")
         let recordId = effectStore.startEffect(photo: image, templateId: tid, isVideo: isVideo)
         currentEffectRecordId = recordId
     }

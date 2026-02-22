@@ -52,6 +52,15 @@ enum EffectsAPI {
     
     static func fetchVideoTemplates() async throws -> [VideoTemplatesGroupResponse] {
         let path = "/api/generations/fotobudka/video-templates?lang=\(lang)"
-        return try await api.get(path)
+        let response: [VideoTemplatesGroupResponse] = try await api.get(path)
+        print("=== VIDEO TEMPLATE IDS ===")
+        for group in response {
+            print("Group:", group.title ?? "no title")
+            for video in group.videos {
+                print("  VideoTemplate ID:", video.id, "title:", video.title)
+            }
+        }
+        print("==========================")
+        return response
     }
 }

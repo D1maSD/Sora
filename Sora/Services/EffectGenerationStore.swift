@@ -25,8 +25,10 @@ struct EffectGenerationRecord: Identifiable {
     let createdAt: Date
     /// Путь к сохранённому изображению на диске (для persistence).
     var imagePath: String?
+    /// Путь к сохранённому видео на диске (для persistence, isVideo == true).
+    var videoPath: String?
 
-    init(id: UUID = UUID(), templateId: Int, isVideo: Bool, status: EffectGenerationStatus, generationId: String? = nil, createdAt: Date = Date(), imagePath: String? = nil) {
+    init(id: UUID = UUID(), templateId: Int, isVideo: Bool, status: EffectGenerationStatus, generationId: String? = nil, createdAt: Date = Date(), imagePath: String? = nil, videoPath: String? = nil) {
         self.id = id
         self.templateId = templateId
         self.isVideo = isVideo
@@ -34,6 +36,7 @@ struct EffectGenerationRecord: Identifiable {
         self.generationId = generationId
         self.createdAt = createdAt
         self.imagePath = imagePath
+        self.videoPath = videoPath
     }
 }
 
@@ -44,6 +47,7 @@ private struct EffectGenerationRecordPersistence: Codable {
     let isVideo: Bool
     let statusString: String // "processing", "success", "error"
     let imagePath: String?
+    let videoPath: String?
     let errorMessage: String?
     let createdAt: TimeInterval
     let generationId: String?
@@ -101,36 +105,38 @@ final class EffectGenerationStore: ObservableObject {
 
     private func runEffectAndPoll(recordId: UUID, photo: UIImage, templateId: Int, isVideo: Bool) async {
         do {
-            let generationId = try await GenerationService.shared.startEffectGeneration(photo: photo, templateId: templateId)
-            await MainActor.run { [weak self] in
-                guard let self = self, let idx = self.records.firstIndex(where: { $0.id == recordId }) else { return }
-                var next = self.records[idx]
-                next.generationId = generationId
-                next.status = .processing
-                self.records[idx] = next
-            }
-
-            let resultOrUrl = try await GenerationService.shared.pollUntilFinished(generationId: generationId)
-            let data = try await GenerationService.shared.downloadGenerationFile(resultOrUrl: resultOrUrl)
-
             if isVideo {
-                let img = UIImage(data: data)
+                // Видео-эффект: POST /api/generations/fotobudka/video (photo + template_id).
+                print("[EffectStore] START VIDEO WITH TEMPLATE ID:", templateId)
+                let videoURL = try await GenerationService.shared.runVideoGeneration(photo: photo, templateId: templateId)
+                let videoPath = saveVideoToDisk(sourceURL: videoURL, recordId: recordId)
                 await MainActor.run { [weak self] in
                     guard let self = self, let idx = self.records.firstIndex(where: { $0.id == recordId }) else { return }
                     let r = self.records[idx]
-                    let imagePath = img.flatMap { self.saveImageToDisk($0, recordId: recordId) }
                     self.records[idx] = EffectGenerationRecord(
                         id: recordId,
                         templateId: templateId,
                         isVideo: true,
-                        status: .success(image: img),
-                        generationId: generationId,
+                        status: .success(image: nil),
+                        generationId: r.generationId,
                         createdAt: r.createdAt,
-                        imagePath: imagePath
+                        imagePath: nil,
+                        videoPath: videoPath
                     )
                     self.persistRecords()
                 }
             } else {
+                let generationId = try await GenerationService.shared.startEffectGeneration(photo: photo, templateId: templateId)
+                await MainActor.run { [weak self] in
+                    guard let self = self, let idx = self.records.firstIndex(where: { $0.id == recordId }) else { return }
+                    var next = self.records[idx]
+                    next.generationId = generationId
+                    next.status = .processing
+                    self.records[idx] = next
+                }
+
+                let resultOrUrl = try await GenerationService.shared.pollUntilFinished(generationId: generationId)
+                let data = try await GenerationService.shared.downloadGenerationFile(resultOrUrl: resultOrUrl)
                 guard let image = UIImage(data: data) else {
                     await setRecordError(recordId, message: "Failed to load image.")
                     return
@@ -146,7 +152,8 @@ final class EffectGenerationStore: ObservableObject {
                         status: .success(image: image),
                         generationId: generationId,
                         createdAt: r.createdAt,
-                        imagePath: imagePath
+                        imagePath: imagePath,
+                        videoPath: nil
                     )
                     self.persistRecords()
                 }
@@ -172,7 +179,8 @@ final class EffectGenerationStore: ObservableObject {
                 status: .error(message),
                 generationId: r.generationId,
                 createdAt: r.createdAt,
-                imagePath: nil
+                imagePath: nil,
+                videoPath: nil
             )
             self.persistRecords()
         }
@@ -190,6 +198,25 @@ final class EffectGenerationStore: ObservableObject {
         } catch {
             return nil
         }
+    }
+
+    /// Копирует видео в Documents/EffectGenerations/{id}.mp4. Возвращает относительный путь.
+    private func saveVideoToDisk(sourceURL: URL, recordId: UUID) -> String? {
+        let fileURL = imagesDirectoryURL.appendingPathComponent("\(recordId.uuidString).mp4")
+        do {
+            if FileManager.default.fileExists(atPath: fileURL.path) {
+                try FileManager.default.removeItem(at: fileURL)
+            }
+            try FileManager.default.copyItem(at: sourceURL, to: fileURL)
+            return "\(Self.imagesSubdirectory)/\(recordId.uuidString).mp4"
+        } catch {
+            return nil
+        }
+    }
+
+    /// Разрешает путь к файлу (image или video): если относительный — от Documents, иначе как есть.
+    func resolveMediaURL(path: String) -> URL {
+        resolveImageURL(path: path)
     }
 
     /// Разрешает путь к файлу: если относительный — от Documents, иначе как есть (для обратной совместимости со старыми абсолютными путями).
@@ -224,7 +251,8 @@ final class EffectGenerationStore: ObservableObject {
                     status: .success(image: image),
                     generationId: p.generationId,
                     createdAt: createdAt,
-                    imagePath: p.imagePath
+                    imagePath: p.imagePath,
+                    videoPath: p.videoPath
                 )
             case "error":
                 return EffectGenerationRecord(
@@ -234,7 +262,8 @@ final class EffectGenerationStore: ObservableObject {
                     status: .error(p.errorMessage ?? "Unknown error"),
                     generationId: p.generationId,
                     createdAt: createdAt,
-                    imagePath: nil
+                    imagePath: nil,
+                    videoPath: nil
                 )
             default:
                 return nil
@@ -253,6 +282,7 @@ final class EffectGenerationStore: ObservableObject {
                     isVideo: r.isVideo,
                     statusString: "success",
                     imagePath: r.imagePath,
+                    videoPath: r.videoPath,
                     errorMessage: nil,
                     createdAt: r.createdAt.timeIntervalSince1970,
                     generationId: r.generationId
@@ -264,6 +294,7 @@ final class EffectGenerationStore: ObservableObject {
                     isVideo: r.isVideo,
                     statusString: "error",
                     imagePath: nil,
+                    videoPath: nil,
                     errorMessage: msg,
                     createdAt: r.createdAt.timeIntervalSince1970,
                     generationId: r.generationId
@@ -285,6 +316,12 @@ final class EffectGenerationStore: ObservableObject {
         if let idx = records.firstIndex(where: { $0.id == id }) {
             let r = records[idx]
             if let path = r.imagePath {
+                let url = resolveImageURL(path: path)
+                if FileManager.default.fileExists(atPath: url.path) {
+                    try? FileManager.default.removeItem(at: url)
+                }
+            }
+            if let path = r.videoPath {
                 let url = resolveImageURL(path: path)
                 if FileManager.default.fileExists(atPath: url.path) {
                     try? FileManager.default.removeItem(at: url)

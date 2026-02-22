@@ -202,10 +202,11 @@ final class APIClient {
         return try decoder.decode(T.self, from: data)
     }
     
-    /// POST multipart with file under name "photo" (for fotobudka/effect).
+    /// POST multipart with file under name "photo". Поддержка int-полей: backend ожидает integer, отправляем с Content-Type: application/json.
     func postMultipartPhoto<T: Decodable>(
         _ path: String,
         formFields: [String: String],
+        intFields: [String: Int] = [:],
         photo: (data: Data, filename: String, mimeType: String),
         useAuth: Bool = true
     ) async throws -> T {
@@ -215,6 +216,13 @@ final class APIClient {
             body.append("--\(boundary)\r\n".data(using: .utf8)!)
             body.append("Content-Disposition: form-data; name=\"\(key)\"\r\n\r\n".data(using: .utf8)!)
             body.append("\(value)\r\n".data(using: .utf8)!)
+        }
+        for (key, value) in intFields {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(key)\"\r\n".data(using: .utf8)!)
+            body.append("Content-Type: application/json\r\n\r\n".data(using: .utf8)!)
+            body.append((try? JSONEncoder().encode(value)) ?? "\(value)".data(using: .utf8)!)
+            body.append("\r\n".data(using: .utf8)!)
         }
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
         body.append("Content-Disposition: form-data; name=\"photo\"; filename=\"\(photo.filename)\"\r\n".data(using: .utf8)!)

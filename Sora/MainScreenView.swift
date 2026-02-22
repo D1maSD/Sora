@@ -736,6 +736,7 @@ struct MainScreenView: View {
     private func loadEffects() async {
         effectsLoading = true
         effectsGroups = []
+        videoGroups = [] // Не смешивать: при загрузке photo очищаем video
         defer { effectsLoading = false }
         do {
             effectsGroups = try await EffectsAPI.fetchEffects()
@@ -747,6 +748,7 @@ struct MainScreenView: View {
     private func loadVideoTemplates() async {
         videoLoading = true
         videoGroups = []
+        effectsGroups = [] // Не смешивать: при загрузке video очищаем photo
         defer { videoLoading = false }
         do {
             videoGroups = try await EffectsAPI.fetchVideoTemplates()
@@ -919,11 +921,12 @@ struct MainScreenView: View {
         guard !isLoadingResponse else { return }
         let messageText = textFieldText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !messageText.isEmpty else { return }
+        // Фото из AddPhotoBottomSheet: если пользователь добавил — передаём в генерацию; иначе nil.
         let messageImage = selectedImage
         let messageVideoURL = selectedVideoURL
 
         if photoVideoSelection == 1 {
-            // Режим video: fal/video-enhance только если пользователь открывал меню разрешения (720/1080); иначе txt2video или fotobudka/video.
+            // Режим video: если в textFieldContainer добавлено видео — передаём его в запрос (enhance); иначе фото→video или txt2video.
             let usedResolutionMenu = userDidOpenVideoResolutionMenu
             let newMessage = Message(text: messageText, image: messageImage, videoURL: messageVideoURL, isIncoming: false)
             let wasEmpty = messages.isEmpty
@@ -940,8 +943,9 @@ struct MainScreenView: View {
             generationTask = Task.detached(priority: .userInitiated) { [$generationError, $showGenerationErrorAlert, videoResolutionPx, defaultVideoTemplateId, onGenerationCompleted, onGenerationFailed] in
                 do {
                     let videoURL: URL
-                    if let videoURLToEnhance = messageVideoURL, usedResolutionMenu {
-                        let multiplier: Double = videoResolutionPx == 1080 ? 1.5 : 1.0
+                    // Видео из textFieldContainer (AddPhotoBottomSheet): если добавлено — обязательно передаём в запрос (enhance).
+                    if let videoURLToEnhance = messageVideoURL {
+                        let multiplier: Double = usedResolutionMenu && videoResolutionPx == 1080 ? 1.5 : 1.0
                         videoURL = try await GenerationService.shared.runFalVideoEnhance(videoURL: videoURLToEnhance, upscaleMultiplier: multiplier)
                     } else if let photo = messageImage {
                         videoURL = try await GenerationService.shared.runVideoGeneration(photo: photo, templateId: defaultVideoTemplateId)
@@ -984,6 +988,7 @@ struct MainScreenView: View {
         isLoadingResponse = true
         generationTask = Task.detached(priority: .userInitiated) { [$generationError, $showGenerationErrorAlert, onGenerationCompleted, onGenerationFailed] in
             do {
+                // messageImage != nil — нейросеть может изменить фото или создать новое на его основе; nil — только по промпту.
                 let (resultImage, resultText) = try await GenerationService.shared.runNanobananaAndLoadImage(prompt: promptForGeneration, image: messageImage)
                 let incoming = Message(text: resultText ?? "", image: resultImage, videoURL: nil, isIncoming: true)
                 await MainActor.run {
@@ -1185,11 +1190,10 @@ struct MainScreenView: View {
         ZStack(alignment: .topTrailing) {
             VStack(spacing: 4) {
                             // TextField
-                            TextField("", text: $textFieldText, prompt: Text("Type here").foregroundColor(.white))
+                            TextField("", text: $textFieldText, prompt: Text("Type here").foregroundColor(Color.white.opacity(0.5)))
                                 .font(.system(size: 17, weight: .regular))
-                                .foregroundColor(Color.white.opacity(0.5))
-                
-                                .padding(.horizontal, 0)
+                                .foregroundColor(.white)
+                                .padding(.trailing, 70)
                                 .padding(.vertical, 12)
                                 .background(Color.clear)
                                 .cornerRadius(12)

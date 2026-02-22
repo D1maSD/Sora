@@ -194,11 +194,15 @@ struct HistoryView: View {
                     ForEach(records) { record in
                         EffectHistoryCardView(
                             record: record,
+                            effectStore: effectStore,
                             cellWidth: cellWidth,
                             cellHeight: cellHeight,
                             onTapSuccess: {
                                 if case .success(let img) = record.status, let image = img {
                                     selectedEffectMedia = IdentifiableMedia(image: image, effectRecordId: record.id)
+                                } else if let videoPath = record.videoPath {
+                                    let url = effectStore.resolveMediaURL(path: videoPath)
+                                    selectedEffectMedia = IdentifiableMedia(videoURL: url, effectRecordId: record.id)
                                 }
                             }
                         )
@@ -363,6 +367,7 @@ struct HistoryView: View {
 // MARK: - Карточка одной генерации в HistoryView (режим effects)
 struct EffectHistoryCardView: View {
     let record: EffectGenerationRecord
+    let effectStore: EffectGenerationStore
     let cellWidth: CGFloat
     let cellHeight: CGFloat
     let onTapSuccess: () -> Void
@@ -374,7 +379,9 @@ struct EffectHistoryCardView: View {
                 processingCard
             case .success(let image):
                 if let img = image {
-                    successCard(image: img)
+                    successImageCard(image: img)
+                } else if let videoPath = record.videoPath {
+                    successVideoCard(videoURL: effectStore.resolveMediaURL(path: videoPath))
                 } else {
                     placeholderCard
                 }
@@ -410,12 +417,24 @@ struct EffectHistoryCardView: View {
         }
     }
     
-    private func successCard(image: UIImage) -> some View {
+    private func successImageCard(image: UIImage) -> some View {
         Button(action: onTapSuccess) {
             ZStack(alignment: .bottomLeading) {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
+                    .frame(width: cellWidth, height: cellHeight)
+                    .clipped()
+                    .cornerRadius(12)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func successVideoCard(videoURL: URL) -> some View {
+        Button(action: onTapSuccess) {
+            ZStack(alignment: .bottomLeading) {
+                SmallVideoThumbnailView(url: videoURL)
                     .frame(width: cellWidth, height: cellHeight)
                     .clipped()
                     .cornerRadius(12)

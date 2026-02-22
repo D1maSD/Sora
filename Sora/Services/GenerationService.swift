@@ -41,6 +41,7 @@ final class GenerationService {
     private init() {}
     
     /// Запуск генерации Nanobanana. Возвращает generation id для polling.
+    /// image: если передан — нейросеть использует фото (изменить или создать на его основе); nil — генерация только по промпту.
     func startNanobananaGeneration(prompt: String, image: UIImage?) async throws -> String {
         var fields: [String: String] = ["prompt": prompt]
         var imagePayload: (data: Data, filename: String, mimeType: String)?
@@ -83,7 +84,16 @@ final class GenerationService {
                     }
                     if gen.status == "error" {
                         let errMsg = gen.error ?? "Generation error"
-                        print("[Generation] Error status with no result: \(errMsg)")
+                        print("""
+                        [VIDEO GENERATION FULL RESPONSE]
+                        id: \(gen.id)
+                        status: \(gen.status)
+                        type: \(gen.type ?? "nil")
+                        result: \(gen.result ?? "nil")
+                        error: \(gen.error ?? "nil")
+                        external_id: \(gen.external_id ?? "nil")
+                        tokens_cost: \(gen.tokens_cost.map { String($0) } ?? "nil")
+                        """)
                         throw GenerationError.failed(errMsg)
                     }
                     print("[Generation] Completed but result empty")
@@ -167,13 +177,15 @@ final class GenerationService {
     // MARK: - Fotobudka Video (photo + template_id → video)
 
     /// Запуск генерации видео: POST /api/generations/fotobudka/video (photo + template_id).
+    /// template_id передаётся как Int (Content-Type: application/json), backend ожидает integer.
     func startVideoGeneration(photo: UIImage, templateId: Int) async throws -> String {
-        guard let jpeg = photo.jpegData(compressionQuality: 0.85) else { throw GenerationError.downloadFailed }
-        let fields: [String: String] = ["template_id": "\(templateId)"]
-        print("[Generation] POST /api/generations/fotobudka/video template_id=\(templateId)")
+        print("[Generation] startVideoGeneration templateId:", templateId)
+        guard let jpeg = photo.jpegData(compressionQuality: 0.6) else { throw GenerationError.downloadFailed }
+        print("[Generation] POST /api/generations/fotobudka/video — template_id=\(templateId) (Int), JPEG_SIZE_MB=\(String(format: "%.2f", Double(jpeg.count) / 1024 / 1024))")
         let response: GenerationResponse = try await api.postMultipartPhoto(
             "/api/generations/fotobudka/video",
-            formFields: fields,
+            formFields: [:],
+            intFields: ["template_id": templateId],
             photo: (jpeg, "photo.jpg", "image/jpeg"),
             useAuth: true
         )
