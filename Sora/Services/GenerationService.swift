@@ -177,15 +177,18 @@ final class GenerationService {
     // MARK: - Fotobudka Video (photo + template_id → video)
 
     /// Запуск генерации видео: POST /api/generations/fotobudka/video (photo + template_id).
-    /// template_id передаётся как Int (Content-Type: application/json), backend ожидает integer.
+    /// template_id — обычное form-data текстовое поле, multipart стандарт.
     func startVideoGeneration(photo: UIImage, templateId: Int) async throws -> String {
         print("[Generation] startVideoGeneration templateId:", templateId)
         guard let jpeg = photo.jpegData(compressionQuality: 0.6) else { throw GenerationError.downloadFailed }
-        print("[Generation] POST /api/generations/fotobudka/video — template_id=\(templateId) (Int), JPEG_SIZE_MB=\(String(format: "%.2f", Double(jpeg.count) / 1024 / 1024))")
+        let fields: [String: String] = [
+            "template_id": "\(templateId)",
+            "app_bundle": Bundle.main.bundleIdentifier ?? ""
+        ]
+        print("[Generation] POST /api/generations/fotobudka/video — template_id=\(templateId), JPEG_SIZE_MB=\(String(format: "%.2f", Double(jpeg.count) / 1024 / 1024))")
         let response: GenerationResponse = try await api.postMultipartPhoto(
             "/api/generations/fotobudka/video",
-            formFields: [:],
-            intFields: ["template_id": templateId],
+            formFields: fields,
             photo: (jpeg, "photo.jpg", "image/jpeg"),
             useAuth: true
         )

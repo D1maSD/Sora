@@ -204,7 +204,9 @@ struct HistoryView: View {
                                     let url = effectStore.resolveMediaURL(path: videoPath)
                                     selectedEffectMedia = IdentifiableMedia(videoURL: url, effectRecordId: record.id)
                                 }
-                            }
+                            },
+                            onRetryError: { effectStore.retryEffect(recordId: record.id) },
+                            onDismissError: { effectStore.removeRecord(id: record.id) }
                         )
                     }
                 }
@@ -371,6 +373,8 @@ struct EffectHistoryCardView: View {
     let cellWidth: CGFloat
     let cellHeight: CGFloat
     let onTapSuccess: () -> Void
+    var onRetryError: (() -> Void)? = nil
+    var onDismissError: (() -> Void)? = nil
     
     var body: some View {
         Group {
@@ -456,21 +460,51 @@ struct EffectHistoryCardView: View {
     
     private var errorCard: some View {
         ZStack {
-            Image("HistoryCard")
+            Image("HistoryEffectCard")
                 .resizable()
                 .scaledToFill()
                 .frame(width: cellWidth, height: cellHeight)
                 .clipped()
                 .cornerRadius(12)
             VStack(spacing: 12) {
-                Image("checkmarkRedWide")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 28, height: 28)
-                Text("Something went wrong")
-                    .font(.system(size: 15, weight: .regular))
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
+                Text("Error")
+                    .font(.system(size: 23, weight: .medium))
+                    .foregroundColor(Color(hex: "#EC0D2A"))
+                Button(action: { onRetryError?() }) {
+                    HStack(spacing: 8) {
+                        Text("Try again")
+                            .font(.system(size: 16, weight: .regular))
+                            .foregroundColor(.white)
+                        Image("refresh")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 30, height: 30)
+                            .foregroundColor(.white)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color(hex: "#3B3D40"))
+                    .cornerRadius(12)
+                }
+                .buttonStyle(.plain)
+            }
+            VStack {
+                HStack {
+                    Spacer()
+                    Button(action: { onDismissError?() }) {
+                        Image("xmark")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 20, height: 20)
+                            .foregroundColor(.white)
+                            .padding(10)
+                            .background(Color(hex: "#3B3D40"))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(12)
+                }
+                Spacer()
             }
         }
     }

@@ -27,8 +27,10 @@ struct EffectGenerationRecord: Identifiable {
     var imagePath: String?
     /// Путь к сохранённому видео на диске (для persistence, isVideo == true).
     var videoPath: String?
+    /// Путь к входному фото (для retry при error).
+    var inputPhotoPath: String?
 
-    init(id: UUID = UUID(), templateId: Int, isVideo: Bool, status: EffectGenerationStatus, generationId: String? = nil, createdAt: Date = Date(), imagePath: String? = nil, videoPath: String? = nil) {
+    init(id: UUID = UUID(), templateId: Int, isVideo: Bool, status: EffectGenerationStatus, generationId: String? = nil, createdAt: Date = Date(), imagePath: String? = nil, videoPath: String? = nil, inputPhotoPath: String? = nil) {
         self.id = id
         self.templateId = templateId
         self.isVideo = isVideo
@@ -37,6 +39,7 @@ struct EffectGenerationRecord: Identifiable {
         self.createdAt = createdAt
         self.imagePath = imagePath
         self.videoPath = videoPath
+        self.inputPhotoPath = inputPhotoPath
     }
 }
 
@@ -48,6 +51,7 @@ private struct EffectGenerationRecordPersistence: Codable {
     let statusString: String // "processing", "success", "error"
     let imagePath: String?
     let videoPath: String?
+    let inputPhotoPath: String?
     let errorMessage: String?
     let createdAt: TimeInterval
     let generationId: String?
@@ -85,13 +89,15 @@ final class EffectGenerationStore: ObservableObject {
     /// - Returns: id записи для подписки на результат в UI.
     func startEffect(photo: UIImage, templateId: Int, isVideo: Bool) -> UUID {
         let id = UUID()
+        let inputPath = saveInputPhotoToDisk(photo, recordId: id)
         let record = EffectGenerationRecord(
             id: id,
             templateId: templateId,
             isVideo: isVideo,
             status: .processing,
             generationId: nil,
-            createdAt: Date()
+            createdAt: Date(),
+            inputPhotoPath: inputPath
         )
         records.insert(record, at: 0)
 
@@ -101,6 +107,22 @@ final class EffectGenerationStore: ObservableObject {
         }
         pollingTasks[id] = task
         return id
+    }
+
+    /// Повторная генерация при error. Загружает входное фото с диска и запускает генерацию заново.
+    func retryEffect(recordId: UUID) {
+        guard let idx = records.firstIndex(where: { $0.id == recordId }) else { return }
+        let r = records[idx]
+        guard case .error = r.status else { return }
+        guard let inputPath = r.inputPhotoPath else { return }
+        guard let photo = loadInputPhoto(path: inputPath) else { return }
+        records[idx].status = .processing
+        records[idx].generationId = nil
+        let task: Task<Void, Never> = Task { [weak self] in
+            guard let self else { return }
+            await self.runEffectAndPoll(recordId: recordId, photo: photo, templateId: r.templateId, isVideo: r.isVideo)
+        }
+        pollingTasks[recordId] = task
     }
 
     private func runEffectAndPoll(recordId: UUID, photo: UIImage, templateId: Int, isVideo: Bool) async {
@@ -145,6 +167,7 @@ final class EffectGenerationStore: ObservableObject {
                     guard let self = self, let idx = self.records.firstIndex(where: { $0.id == recordId }) else { return }
                     let r = self.records[idx]
                     let imagePath = self.saveImageToDisk(image, recordId: recordId)
+                    self.deleteInputPhoto(path: r.inputPhotoPath)
                     self.records[idx] = EffectGenerationRecord(
                         id: recordId,
                         templateId: templateId,
@@ -153,7 +176,8 @@ final class EffectGenerationStore: ObservableObject {
                         generationId: generationId,
                         createdAt: r.createdAt,
                         imagePath: imagePath,
-                        videoPath: nil
+                        videoPath: nil,
+                        inputPhotoPath: nil
                     )
                     self.persistRecords()
                 }
@@ -180,13 +204,41 @@ final class EffectGenerationStore: ObservableObject {
                 generationId: r.generationId,
                 createdAt: r.createdAt,
                 imagePath: nil,
-                videoPath: nil
+                videoPath: nil,
+                inputPhotoPath: r.inputPhotoPath
             )
             self.persistRecords()
         }
     }
 
     // MARK: - Persistence
+
+    /// Сохраняет входное фото для retry при error.
+    private func saveInputPhotoToDisk(_ image: UIImage, recordId: UUID) -> String? {
+        guard let data = image.jpegData(compressionQuality: 0.85) else { return nil }
+        let fileURL = imagesDirectoryURL.appendingPathComponent("input_\(recordId.uuidString).jpg")
+        do {
+            try data.write(to: fileURL)
+            return "\(Self.imagesSubdirectory)/input_\(recordId.uuidString).jpg"
+        } catch {
+            return nil
+        }
+    }
+
+    private func loadInputPhoto(path: String) -> UIImage? {
+        let url = resolveImageURL(path: path)
+        guard FileManager.default.fileExists(atPath: url.path),
+              let data = try? Data(contentsOf: url) else { return nil }
+        return UIImage(data: data)
+    }
+
+    private func deleteInputPhoto(path: String?) {
+        guard let path = path else { return }
+        let url = resolveImageURL(path: path)
+        if FileManager.default.fileExists(atPath: url.path) {
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
 
     /// Сохраняет изображение в Documents/EffectGenerations/{id}.jpg. Возвращает относительный путь (от Documents), чтобы после перезапуска приложения путь оставался валидным.
     private func saveImageToDisk(_ image: UIImage, recordId: UUID) -> String? {
@@ -252,7 +304,8 @@ final class EffectGenerationStore: ObservableObject {
                     generationId: p.generationId,
                     createdAt: createdAt,
                     imagePath: p.imagePath,
-                    videoPath: p.videoPath
+                    videoPath: p.videoPath,
+                    inputPhotoPath: nil
                 )
             case "error":
                 return EffectGenerationRecord(
@@ -263,7 +316,8 @@ final class EffectGenerationStore: ObservableObject {
                     generationId: p.generationId,
                     createdAt: createdAt,
                     imagePath: nil,
-                    videoPath: nil
+                    videoPath: nil,
+                    inputPhotoPath: p.inputPhotoPath
                 )
             default:
                 return nil
@@ -283,6 +337,7 @@ final class EffectGenerationStore: ObservableObject {
                     statusString: "success",
                     imagePath: r.imagePath,
                     videoPath: r.videoPath,
+                    inputPhotoPath: nil,
                     errorMessage: nil,
                     createdAt: r.createdAt.timeIntervalSince1970,
                     generationId: r.generationId
@@ -295,6 +350,7 @@ final class EffectGenerationStore: ObservableObject {
                     statusString: "error",
                     imagePath: nil,
                     videoPath: nil,
+                    inputPhotoPath: r.inputPhotoPath,
                     errorMessage: msg,
                     createdAt: r.createdAt.timeIntervalSince1970,
                     generationId: r.generationId
@@ -327,6 +383,7 @@ final class EffectGenerationStore: ObservableObject {
                     try? FileManager.default.removeItem(at: url)
                 }
             }
+            deleteInputPhoto(path: r.inputPhotoPath)
             records.remove(at: idx)
             persistRecords()
         }
