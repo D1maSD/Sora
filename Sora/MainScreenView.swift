@@ -444,13 +444,6 @@ struct MainScreenView: View {
                 ShareSheet(activityItems: item.activityItems)
             }
         }
-        .overlay {
-            if showVideoResolutionMenu {
-                Color.black.opacity(0.3)
-                    .ignoresSafeArea()
-                    .onTapGesture { showVideoResolutionMenu = false }
-            }
-        }
     }
     
     /// Меню выбора разрешения видео (720px / 1080px). Обновляет state через замыкание onSelect, чтобы значение гарантированно менялось в MainScreenView.
@@ -465,7 +458,7 @@ struct MainScreenView: View {
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
+                    .padding(.vertical, 17)
             }
             .buttonStyle(.plain)
             
@@ -481,7 +474,7 @@ struct MainScreenView: View {
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
+                    .padding(.vertical, 17)
             }
             .buttonStyle(.plain)
         }
@@ -1136,17 +1129,6 @@ struct MainScreenView: View {
             .padding(.horizontal, 35)
             .padding(.bottom, 34)
             
-            if showVideoResolutionMenu {
-                videoResolutionMenuView(
-                    onSelect: { newValue in
-                        videoResolutionPx = newValue
-                        print("[MainScreenView] videoResolutionPx = \(newValue)")
-                    },
-                    isPresented: $showVideoResolutionMenu
-                )
-                .padding(.leading, 60 + 13 + 12)
-                .padding(.bottom, 13 + 44 + 8)
-            }
         }
         .sheet(isPresented: $showAddPhotoSheet) {
             AddPhotoBottomSheet(
@@ -1306,6 +1288,16 @@ struct MainScreenView: View {
                                         showVideoResolutionMenu = true
                                         userDidOpenVideoResolutionMenu = true
                                     })
+                                    .popover(isPresented: $showVideoResolutionMenu, attachmentAnchor: .rect(.bounds)) {
+                                        videoResolutionMenuView(
+                                            onSelect: { newValue in
+                                                videoResolutionPx = newValue
+                                                print("[MainScreenView] videoResolutionPx = \(newValue)")
+                                            },
+                                            isPresented: $showVideoResolutionMenu
+                                        )
+                                        .presentationCompactAdaptation(.popover)
+                                    }
                                 }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1773,15 +1765,15 @@ struct ImageViewer: View {
                         Image(uiImage: image)
                             .resizable()
                             .scaledToFit()
+                            .clipShape(RoundedRectangle(cornerRadius: 30))
                             .padding(.top, 40)
                             .padding(.horizontal, 30)
-                            .clipShape(RoundedRectangle(cornerRadius: 30))
                     } else if let videoURL = media.videoURL {
                         VideoPlayer(player: AVPlayer(url: videoURL))
-                            .frame(maxWidth: .infinity)
+                            .aspectRatio(contentMode: .fit)
+                            .clipShape(RoundedRectangle(cornerRadius: 30))
                             .padding(.top, 40)
                             .padding(.horizontal, 30)
-                            .clipShape(RoundedRectangle(cornerRadius: 30))
                     }
                     
                     Button(action: {
