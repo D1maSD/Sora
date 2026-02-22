@@ -919,7 +919,12 @@ struct MainScreenView: View {
         let messageVideoURL = selectedVideoURL
 
         if photoVideoSelection == 1 {
-            // Режим video: если в textFieldContainer добавлено видео — передаём его в запрос (enhance); иначе фото→video или txt2video.
+            // Режим video: если в textFieldContainer добавлено видео — передаём в fal/video-enhance ТОЛЬКО после выбора разрешения в меню.
+            if messageVideoURL != nil && !userDidOpenVideoResolutionMenu {
+                generationError = "Please select video resolution (720 or 1080) before sending"
+                showGenerationErrorAlert = true
+                return
+            }
             let usedResolutionMenu = userDidOpenVideoResolutionMenu
             let newMessage = Message(text: messageText, image: messageImage, videoURL: messageVideoURL, isIncoming: false)
             let wasEmpty = messages.isEmpty
