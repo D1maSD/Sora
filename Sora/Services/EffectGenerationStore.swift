@@ -135,6 +135,7 @@ final class EffectGenerationStore: ObservableObject {
                 await MainActor.run { [weak self] in
                     guard let self = self, let idx = self.records.firstIndex(where: { $0.id == recordId }) else { return }
                     let r = self.records[idx]
+                    self.deleteInputPhoto(path: r.inputPhotoPath)
                     self.records[idx] = EffectGenerationRecord(
                         id: recordId,
                         templateId: templateId,
@@ -146,6 +147,7 @@ final class EffectGenerationStore: ObservableObject {
                         videoPath: videoPath
                     )
                     self.persistRecords()
+                    RatingPromptService.shared.incrementVideoGeneration()
                 }
             } else {
                 let generationId = try await GenerationService.shared.startEffectGeneration(photo: photo, templateId: templateId)

@@ -29,18 +29,26 @@ enum ApphudConfig {
 struct SoraApp: App {
     @StateObject private var tokensStore = TokensStore()
     @State private var isLoaded = false
+    @State private var hasIncrementedAppOpen = false
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
-    
+
     init() {
         Apphud.start(apiKey: ApphudConfig.currentKey)
     }
-    
+
     var body: some Scene {
         WindowGroup {
             Group {
                 if isLoaded {
                     if hasCompletedOnboarding {
                         ContentView()
+                            .onAppear {
+                                guard !hasIncrementedAppOpen else { return }
+                                hasIncrementedAppOpen = true
+                                Task { @MainActor in
+                                    RatingPromptService.shared.incrementAppOpen()
+                                }
+                            }
                     } else {
                         OnboardingView()
                     }

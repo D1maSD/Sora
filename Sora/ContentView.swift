@@ -7,7 +7,8 @@ import SwiftUI
 
 struct ContentView: View {
     private let store = ChatStore.shared
-    
+    @ObservedObject private var ratingPrompt = RatingPromptService.shared
+
     @State private var currentChatId: UUID?
     @State private var currentChatMessages: [Message] = []
     @State private var showHistory = false
@@ -18,7 +19,8 @@ struct ContentView: View {
     @State private var historyIsEffectsMode = false
     @State private var showSettings = false
     @State private var sessionItems: [ChatSessionItem] = []
-    
+    @State private var showRatingPrompt = false
+
     var body: some View {
         Group {
             if showSettings {
@@ -88,6 +90,11 @@ struct ContentView: View {
                                 currentChatMessages = store.fetchMessages(sessionId: cid)
                             }
                         }
+                        if message.videoURL != nil {
+                            Task { @MainActor in
+                                RatingPromptService.shared.incrementVideoGeneration()
+                            }
+                        }
                         isLoadingResponse = false
                         generationChatId = nil
                     },
@@ -118,6 +125,15 @@ struct ContentView: View {
             currentChatId = nil
             currentChatMessages = []
             sessionItems = store.fetchAllSessions()
+        }
+        .onChange(of: ratingPrompt.shouldShowRatingPrompt) { _, new in
+            showRatingPrompt = new
+        }
+        .fullScreenCover(isPresented: $showRatingPrompt) {
+            RatingPromptView(onDismiss: {
+                RatingPromptService.shared.dismissPrompt()
+                showRatingPrompt = false
+            })
         }
         .alert("Generation failed", isPresented: $showGenerationErrorAlert) {
             Button("OK", role: .cancel) {
