@@ -377,24 +377,43 @@ struct MainScreenView: View {
     @State private var effectCategoryForSeeAll: EffectCategoryPayload?
     @State private var effectPreviewPayload: EffectPreviewPayload?
     
+    /// Высота зоны topSection в chat-режиме (firstRow + secondRow + spacing).
+    private let chatTopSectionHeight: CGFloat = 170
+    
     var body: some View {
-        ZStack {
-            // Фоновое изображение
-            Image("phone")
-                .resizable()
-                .scaledToFill()
-                .ignoresSafeArea()
-            
-            VStack(spacing: 0) {
+        GeometryReader { geo in
+            ZStack(alignment: .top) {
+                // Фоновое изображение
+                Image("phone")
+                    .resizable()
+                    .scaledToFill()
+                    .ignoresSafeArea()
+                
+                if chatEffectsSelection == 0 {
+                    // Сообщения + input (без topSection в вертикальном layout)
+                    VStack(spacing: 0) {
+                        messagesSection
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        bottomSection
+                    }
+                    .frame(width: geo.size.width)
+                    .padding(.top, chatTopSectionHeight)
+                } else {
+                    effectsContent
+                        .frame(width: geo.size.width)
+                        .padding(.top, chatTopSectionHeight)
+                }
+                
+                // Единый абсолютно позиционированный header для chat/effects.
                 topSection
-                if chatEffectsSelection == 0 {
-                    messagesSection
-                }
-                if chatEffectsSelection == 0 {
-                    bottomSection
-                }
+                    .frame(width: geo.size.width - 40)
+                    .offset(y: 50)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
+            .frame(width: geo.size.width, height: geo.size.height)
+            .ignoresSafeArea(.keyboard)
         }
+        .ignoresSafeArea()
         .overlay {
             if showDeleteChatAlert {
                 DeleteChatAlertView(
@@ -488,23 +507,24 @@ struct MainScreenView: View {
         VStack(spacing: 8) {
             firstRow
             secondRow
-            if chatEffectsSelection == 1 {
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 0) {
-                        effectsBannerSection
-                            .padding(.top, 0)
-                        effectsDynamicSection
-                            .padding(.bottom, 24)
-                    }
-                }
-                .task(id: "effects-\(photoVideoSelection)") {
-                    guard chatEffectsSelection == 1 else { return }
-                    if photoVideoSelection == 0 {
-                        await loadEffects()
-                    } else {
-                        await loadVideoTemplates()
-                    }
-                }
+        }
+    }
+    
+    private var effectsContent: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 0) {
+                effectsBannerSection
+                    .padding(.top, 0)
+                effectsDynamicSection
+                    .padding(.bottom, 24)
+            }
+        }
+        .task(id: "effects-\(photoVideoSelection)") {
+            guard chatEffectsSelection == 1 else { return }
+            if photoVideoSelection == 0 {
+                await loadEffects()
+            } else {
+                await loadVideoTemplates()
             }
         }
     }
