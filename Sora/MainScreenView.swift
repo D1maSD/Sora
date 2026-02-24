@@ -398,6 +398,7 @@ struct MainScreenView: View {
                         messagesSection
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                         bottomSection
+                            .frame(width: geo.size.width + 40)
                             .offset(y: -keyboardHeight)
                     }
                     .frame(width: geo.size.width)
@@ -416,6 +417,9 @@ struct MainScreenView: View {
             }
             .frame(width: geo.size.width, height: geo.size.height)
             .ignoresSafeArea(.keyboard)
+            .onTapGesture {
+                dismissKeyboard()
+            }
         }
         .ignoresSafeArea()
         .onAppear {
@@ -500,6 +504,10 @@ struct MainScreenView: View {
                 ShareSheet(activityItems: item.activityItems)
             }
         }
+    }
+    
+    private func dismissKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
     
     /// Меню выбора разрешения видео (720px / 1080px). Обновляет state через замыкание onSelect, чтобы значение гарантированно менялось в MainScreenView.
