@@ -376,6 +376,9 @@ struct MainScreenView: View {
     @State private var videoLoading = false
     @State private var effectCategoryForSeeAll: EffectCategoryPayload?
     @State private var effectPreviewPayload: EffectPreviewPayload?
+    @State private var keyboardHeight: CGFloat = 0
+    @State private var keyboardWillShowObserver: NSObjectProtocol?
+    @State private var keyboardWillHideObserver: NSObjectProtocol?
     
     /// Высота зоны topSection в chat-режиме (firstRow + secondRow + spacing).
     private let chatTopSectionHeight: CGFloat = 170
@@ -395,6 +398,7 @@ struct MainScreenView: View {
                         messagesSection
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                         bottomSection
+                            .offset(y: -keyboardHeight)
                     }
                     .frame(width: geo.size.width)
                     .padding(.top, chatTopSectionHeight)
@@ -406,7 +410,7 @@ struct MainScreenView: View {
                 
                 // Единый абсолютно позиционированный header для chat/effects.
                 topSection
-                    .frame(width: geo.size.width - 40)
+                    .frame(width: geo.size.width + 30)
                     .offset(y: 50)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
@@ -414,6 +418,39 @@ struct MainScreenView: View {
             .ignoresSafeArea(.keyboard)
         }
         .ignoresSafeArea()
+        .onAppear {
+            keyboardWillShowObserver = NotificationCenter.default.addObserver(
+                forName: UIResponder.keyboardWillShowNotification,
+                object: nil,
+                queue: .main
+            ) { notification in
+                if let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
+                    withAnimation(.easeOut(duration: 0.25)) {
+                        keyboardHeight = frame.height - 30
+                    }
+                }
+            }
+            
+            keyboardWillHideObserver = NotificationCenter.default.addObserver(
+                forName: UIResponder.keyboardWillHideNotification,
+                object: nil,
+                queue: .main
+            ) { _ in
+                withAnimation(.easeOut(duration: 0.25)) {
+                    keyboardHeight = 0
+                }
+            }
+        }
+        .onDisappear {
+            if let observer = keyboardWillShowObserver {
+                NotificationCenter.default.removeObserver(observer)
+                keyboardWillShowObserver = nil
+            }
+            if let observer = keyboardWillHideObserver {
+                NotificationCenter.default.removeObserver(observer)
+                keyboardWillHideObserver = nil
+            }
+        }
         .overlay {
             if showDeleteChatAlert {
                 DeleteChatAlertView(
