@@ -51,6 +51,19 @@ struct EffectPreviewView: View {
         return items[currentEffectIndex].id
     }
     
+    /// Режим баннера (effectsBannerData): генерация через nanobanana/txt2video, не через effects API.
+    private var isBannerMode: Bool {
+        effectItems?.first?.imageName != nil
+    }
+    
+    /// Стиль для промпта: "Cube World" → "Lego", остальные как есть.
+    private var currentStyleForPrompt: String {
+        guard let items = effectItems, items.indices.contains(currentEffectIndex) else { return "Anime" }
+        let t = items[currentEffectIndex].title ?? "Anime"
+        if t == "Cube World" { return "Lego" }
+        return t
+    }
+    
     /// Заголовок навбара: название текущего эффекта или "Effect" для статичного баннера.
     private var navbarTitle: String {
         if let items = effectItems, items.indices.contains(currentEffectIndex) {
@@ -157,14 +170,50 @@ struct EffectPreviewView: View {
     }
     
     private func submitImageForProcessing(_ image: UIImage) {
+        if isBannerMode {
+            submitBannerGeneration(image: image)
+            return
+        }
         guard let tid = templateId else {
             startProgressTimer()
             return
         }
-        // templateId всегда из effectItems: при isVideo — VideoTemplateItemResponse.id (/video-templates), при !isVideo — EffectItemResponse.id (/effects).
         print("[EffectPreview] submitEffect templateId=\(tid) isVideo=\(isVideo)")
         let recordId = effectStore.startEffect(photo: image, templateId: tid, isVideo: isVideo)
         currentEffectRecordId = recordId
+    }
+    
+    private func submitBannerGeneration(image: UIImage) {
+        let style = currentStyleForPrompt
+        let recordId = effectStore.addBannerRecordProcessing(isVideo: isVideo)
+        currentEffectRecordId = recordId
+        Task { @MainActor in
+            do {
+                if isVideo {
+                    let prompt = "Generate a video in \(style) style"
+                    let videoURL = try await GenerationService.shared.runFotobudkaTxt2Video(prompt: prompt)
+                    effectStore.setBannerRecordSuccess(recordId: recordId, image: nil, videoURL: videoURL)
+                    if let path = effectStore.record(by: recordId)?.videoPath {
+                        resultVideoURLForViewer = effectStore.resolveMediaURL(path: path)
+                    }
+                    showProcessingView = false
+                    selectedImageForEffect = nil
+                    showProcessingError = false
+                } else {
+                    let prompt = "Generate a photo based on this image in \(style) style"
+                    let (resultImage, _) = try await GenerationService.shared.runNanobananaAndLoadImage(prompt: prompt, image: image)
+                    effectStore.setBannerRecordSuccess(recordId: recordId, image: resultImage, videoURL: nil)
+                    resultImageForViewer = IdentifiableImageResult(image: resultImage)
+                    showProcessingView = false
+                    selectedImageForEffect = nil
+                    showProcessingError = false
+                }
+            } catch {
+                let msg = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                effectStore.setBannerRecordError(recordId: recordId, message: msg)
+                showProcessingError = true
+            }
+        }
     }
     
     private func startProgressTimer() {
@@ -249,12 +298,20 @@ struct EffectPreviewView: View {
                     if let items = effectItems {
                         ForEach(Array(items.enumerated()), id: \.element.id) { offset, item in
                             ZStack(alignment: .bottomLeading) {
-                                CachedAsyncImage(
-                                    urlString: item.previewURL,
-                                    failure: { AnyView(Rectangle().fill(Color(hex: "#2B2D30")).overlay(Image(systemName: "photo").foregroundColor(.white.opacity(0.5)))) }
-                                )
-                                .frame(width: cellWidth, height: cellHeight)
-                                .clipped()
+                                if let imgName = item.imageName {
+                                    Image(imgName)
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: cellWidth, height: cellHeight)
+                                        .clipped()
+                                } else {
+                                    CachedAsyncImage(
+                                        urlString: item.previewURL,
+                                        failure: { AnyView(Rectangle().fill(Color(hex: "#2B2D30")).overlay(Image(systemName: "photo").foregroundColor(.white.opacity(0.5)))) }
+                                    )
+                                    .frame(width: cellWidth, height: cellHeight)
+                                    .clipped()
+                                }
                                 if let t = item.title, !t.isEmpty {
                                     Text(t)
                                         .font(.system(size: 27, weight: .semibold))

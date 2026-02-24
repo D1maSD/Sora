@@ -527,17 +527,29 @@ struct MainScreenView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: spacingBetweenCells) {
                     ForEach(Array(effectsBannerData.enumerated()), id: \.offset) { offset, item in
-                        ZStack(alignment: .bottomLeading) {
-                            Image(item.imageName)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: cellWidth, height: cellHeight)
-                            Text(item.title)
-                                .font(.system(size: 17, weight: .semibold))
-                                .foregroundColor(.white)
-                                .padding(.leading, 10)
-                                .padding(.bottom, 10)
+                        Button(action: {
+                            let items = effectsBannerData.enumerated().map { idx, b in
+                                EffectPreviewItem(id: idx, previewURL: "", title: b.title, imageName: b.imageName)
+                            }
+                            effectPreviewPayload = EffectPreviewPayload(
+                                items: items,
+                                selectedIndex: offset,
+                                isVideo: photoVideoSelection == 1
+                            )
+                        }) {
+                            ZStack(alignment: .bottomLeading) {
+                                Image(item.imageName)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: cellWidth, height: cellHeight)
+                                Text(item.title)
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .foregroundColor(.white)
+                                    .padding(.leading, 10)
+                                    .padding(.bottom, 10)
+                            }
                         }
+                        .buttonStyle(.plain)
                         .frame(width: cellWidth, height: cellHeight)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                         .id(offset)
@@ -1643,10 +1655,18 @@ struct StyleCard: View {
     }
 }
 
-// Маленькое превью видео (40x40) для отображения под TextField в режиме video
+// Маленькое превью видео (40x40) для отображения под TextField в режиме video. При fillFrame: true — заполняет родительский frame (для HistoryView effects).
 struct SmallVideoThumbnailView: View {
     let url: URL
+    /// nil = 40x40 (для TextField). Иначе — заполняет указанный размер (для HistoryView).
+    var size: (width: CGFloat, height: CGFloat)? = nil
+    
     @State private var thumbnail: UIImage?
+    
+    private var displayWidth: CGFloat { size?.width ?? 40 }
+    private var displayHeight: CGFloat { size?.height ?? 40 }
+    private var cornerRadius: CGFloat { size != nil ? 12 : 8 }
+    private var playIconSize: CGFloat { size != nil ? 48 : 20 }
     
     var body: some View {
         ZStack {
@@ -1654,16 +1674,16 @@ struct SmallVideoThumbnailView: View {
                 Image(uiImage: thumbnail)
                     .resizable()
                     .scaledToFill()
-                    .frame(width: 40, height: 40)
+                    .frame(width: displayWidth, height: displayHeight)
                     .clipped()
-                    .cornerRadius(8)
+                    .cornerRadius(cornerRadius)
             } else {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: cornerRadius)
                     .fill(Color(hex: "#2A2A2A"))
-                    .frame(width: 40, height: 40)
+                    .frame(width: displayWidth, height: displayHeight)
             }
             Image(systemName: "play.circle.fill")
-                .font(.system(size: 20))
+                .font(.system(size: playIconSize))
                 .foregroundColor(.white.opacity(0.9))
         }
         .onAppear { loadThumbnail() }

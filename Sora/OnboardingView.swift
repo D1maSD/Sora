@@ -10,8 +10,8 @@ import StoreKit
 
 struct OnboardingView: View {
     @State private var currentPage = 0
-    @State private var showRatingAlert = false
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    var onComplete: (() -> Void)? = nil
     
     let onboardingData: [(imageName: String, title: String)] = [
         ("firstScreen", "Create with chat"),
@@ -40,15 +40,11 @@ struct OnboardingView: View {
                 .ignoresSafeArea(edges: .top)
                 .onChange(of: currentPage) { newPage in
                     if newPage == 3 { // Индекс 3 = "Rate our app in the AppStore"
-                        // Показываем кастомный алерт с пятью звездами
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                            showRatingAlert = true
+                            if let windowScene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene {
+                                SKStoreReviewController.requestReview(in: windowScene)
+                            }
                         }
-                    }
-                }
-                .overlay {
-                    if showRatingAlert {
-                        RatingAlertView(isPresented: $showRatingAlert)
                     }
                 }
                 
@@ -80,6 +76,7 @@ struct OnboardingView: View {
                         } else {
                             // Завершение онбординга - переход на главный экран
                             hasCompletedOnboarding = true
+                            onComplete?()
                         }
                     }) {
                         Text("Next")
@@ -120,84 +117,6 @@ struct OnboardingPageView: View {
                 .clipped()
         }
         .ignoresSafeArea(edges: .top)
-    }
-}
-
-struct RatingAlertView: View {
-    @Binding var isPresented: Bool
-    @State private var selectedRating: Int = 0
-    
-    var body: some View {
-        ZStack {
-            Color.black.opacity(0.7)
-                .ignoresSafeArea()
-                .onTapGesture {
-                    isPresented = false
-                }
-            
-            VStack(spacing: 0) {
-                Spacer()
-                
-                VStack(spacing: 20) {
-                    // Тайтл
-                    Text("Review Store Review Controller?")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.center)
-                        .padding(.top, 24)
-                        .padding(.horizontal, 20)
-                    
-                    // Сабтайтл
-                    Text("Tap a star to rate it on the\nApp Store.")
-                        .font(.system(size: 13, weight: .regular))
-                        .foregroundColor(.white.opacity(0.7))
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 20)
-                    
-                    // Пять звезд
-                    HStack(spacing: 12) {
-                        ForEach(1...5, id: \.self) { index in
-                            Button(action: {
-                                selectedRating = index
-                                // При выборе звезды открываем системный контроллер оценки
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                    if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-                                        SKStoreReviewController.requestReview(in: windowScene)
-                                    }
-                                    isPresented = false
-                                }
-                            }) {
-                                Image(systemName: index <= selectedRating ? "star.fill" : "star")
-                                    .font(.system(size: 32))
-                                    .foregroundColor(index <= selectedRating ? .yellow : .white.opacity(0.3))
-                            }
-                        }
-                    }
-                    .padding(.vertical, 16)
-                    
-                    // Кнопка Not Now
-                    Button(action: {
-                        isPresented = false
-                    }) {
-                        Text("Not Now")
-                            .font(.system(size: 17, weight: .regular))
-                            .foregroundColor(.white.opacity(0.7))
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 44)
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 24)
-                }
-                .background(Color.black)
-                .cornerRadius(16)
-                .padding(.horizontal, 20)
-                
-                Spacer()
-            }
-        }
-        .onAppear {
-            selectedRating = 0
-        }
     }
 }
 

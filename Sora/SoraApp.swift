@@ -28,8 +28,10 @@ enum ApphudConfig {
 @main
 struct SoraApp: App {
     @StateObject private var tokensStore = TokensStore()
+    @ObservedObject private var purchaseManager = PurchaseManager.shared
     @State private var isLoaded = false
     @State private var hasIncrementedAppOpen = false
+    @State private var hasJustCompletedOnboarding = false
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
 
     init() {
@@ -40,7 +42,13 @@ struct SoraApp: App {
         WindowGroup {
             Group {
                 if isLoaded {
-                    if hasCompletedOnboarding {
+                    if !hasCompletedOnboarding {
+                        OnboardingView(onComplete: { hasJustCompletedOnboarding = true })
+                    } else if hasJustCompletedOnboarding && !purchaseManager.isSubscribed {
+                        PaywallView(onDismiss: {
+                            hasJustCompletedOnboarding = false
+                        })
+                    } else {
                         ContentView()
                             .onAppear {
                                 guard !hasIncrementedAppOpen else { return }
@@ -49,8 +57,6 @@ struct SoraApp: App {
                                     RatingPromptService.shared.incrementAppOpen()
                                 }
                             }
-                    } else {
-                        OnboardingView()
                     }
                 } else {
                     SplashView()
@@ -72,6 +78,11 @@ struct SoraApp: App {
             }
             .environmentObject(tokensStore)
             .environmentObject(PurchaseManager.shared)
+            .onChange(of: purchaseManager.isSubscribed) { _, isSubscribed in
+                if isSubscribed {
+                    hasJustCompletedOnboarding = false
+                }
+            }
         }
     }
 }

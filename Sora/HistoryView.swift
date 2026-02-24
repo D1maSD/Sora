@@ -438,7 +438,7 @@ struct EffectHistoryCardView: View {
     private func successVideoCard(videoURL: URL) -> some View {
         Button(action: onTapSuccess) {
             ZStack(alignment: .bottomLeading) {
-                SmallVideoThumbnailView(url: videoURL)
+                SmallVideoThumbnailView(url: videoURL, size: (cellWidth, cellHeight))
                     .frame(width: cellWidth, height: cellHeight)
                     .clipped()
                     .cornerRadius(12)

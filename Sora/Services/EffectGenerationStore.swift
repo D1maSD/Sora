@@ -400,4 +400,69 @@ final class EffectGenerationStore: ObservableObject {
     var videoRecords: [EffectGenerationRecord] {
         records.filter { $0.isVideo }
     }
+
+    // MARK: - Banner (Anime/Baby Face/Cube World) — nanobanana/txt2video
+
+    /// Добавить запись в processing для баннерной генерации. Возвращает id записи.
+    func addBannerRecordProcessing(isVideo: Bool) -> UUID {
+        let id = UUID()
+        let record = EffectGenerationRecord(
+            id: id,
+            templateId: 0,
+            isVideo: isVideo,
+            status: .processing,
+            generationId: nil,
+            createdAt: Date(),
+            inputPhotoPath: nil
+        )
+        records.insert(record, at: 0)
+        return id
+    }
+
+    /// Обновить баннерную запись на success. Сохраняет image/video на диск.
+    func setBannerRecordSuccess(recordId: UUID, image: UIImage?, videoURL: URL?) {
+        guard let idx = records.firstIndex(where: { $0.id == recordId }) else { return }
+        let r = records[idx]
+        var imagePath: String?
+        var videoPath: String?
+        if let img = image {
+            imagePath = saveImageToDisk(img, recordId: recordId)
+        }
+        if let url = videoURL {
+            videoPath = saveVideoToDisk(sourceURL: url, recordId: recordId)
+        }
+        records[idx] = EffectGenerationRecord(
+            id: recordId,
+            templateId: r.templateId,
+            isVideo: r.isVideo,
+            status: .success(image: image),
+            generationId: nil,
+            createdAt: r.createdAt,
+            imagePath: imagePath,
+            videoPath: videoPath,
+            inputPhotoPath: nil
+        )
+        persistRecords()
+        if r.isVideo {
+            RatingPromptService.shared.incrementVideoGeneration()
+        }
+    }
+
+    /// Обновить баннерную запись на error.
+    func setBannerRecordError(recordId: UUID, message: String) {
+        guard let idx = records.firstIndex(where: { $0.id == recordId }) else { return }
+        let r = records[idx]
+        records[idx] = EffectGenerationRecord(
+            id: recordId,
+            templateId: r.templateId,
+            isVideo: r.isVideo,
+            status: .error(message),
+            generationId: nil,
+            createdAt: r.createdAt,
+            imagePath: nil,
+            videoPath: nil,
+            inputPhotoPath: nil
+        )
+        persistRecords()
+    }
 }

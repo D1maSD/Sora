@@ -172,6 +172,15 @@ struct EffectPreviewItem: Identifiable {
     let id: Int
     let previewURL: String
     let title: String?
+    /// Для локальных картинок из Assets (effectsBannerSection).
+    let imageName: String?
+    
+    init(id: Int, previewURL: String, title: String?, imageName: String? = nil) {
+        self.id = id
+        self.previewURL = previewURL
+        self.title = title
+        self.imageName = imageName
+    }
 }
 
 // MARK: - See All: экран категории с вертикальной сеткой картинок из раздела

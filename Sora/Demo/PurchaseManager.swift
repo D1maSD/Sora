@@ -94,7 +94,7 @@ final class PurchaseManager: ObservableObject {
 #if DEBUG
 //        self.isSubscribed = false
 //        self.isSubscribed = Apphud.hasPremiumAccess()
-        self.isSubscribed = true
+        self.isSubscribed = false
 #else
         self.isSubscribed = Apphud.hasPremiumAccess()
 #endif
