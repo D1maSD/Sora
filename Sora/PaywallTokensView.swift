@@ -20,6 +20,7 @@ struct PaywallTokensView: View {
 
     @State private var pickedProd: ApphudProduct?
     @State private var showErrorAlert = false
+    @State private var canClose = false
 
     private let screenWidth = UIScreen.main.bounds.width
     private let screenHeight = UIScreen.main.bounds.height
@@ -40,7 +41,7 @@ struct PaywallTokensView: View {
             VStack {
                 HStack {
                     Spacer()
-                    if !purchaseManager.isLoading {
+                    if !purchaseManager.isLoading && canClose {
                         Button(action: { onDismiss?(); dismiss() }) {
                             Image("xmark")
                                 .resizable()
@@ -81,6 +82,11 @@ struct PaywallTokensView: View {
             Text(purchaseManager.purchaseError ?? purchaseManager.failRestoreText ?? "")
         }
         .onAppear {
+            canClose = false
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                canClose = true
+            }
             if purchaseManager.purchaseError != nil || purchaseManager.failRestoreText != nil {
                 showErrorAlert = true
             }

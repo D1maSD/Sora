@@ -367,8 +367,9 @@ struct MainScreenView: View {
     @State private var showTokensPaywall = false
     @State private var generationTask: Task<Void, Never>?
     @State private var shareItem: ShareableItem?
-    @State private var showSaveError = false
-    @State private var saveErrorText = ""
+    @State private var saveAlertTitle = "Save failed"
+    @State private var saveAlertText = ""
+    @State private var showSaveAlert = false
     @State private var regeneratingMessageId: UUID?
     @State private var effectsGroups: [EffectsGroupResponse] = []
     @State private var videoGroups: [VideoTemplatesGroupResponse] = []
@@ -494,10 +495,13 @@ struct MainScreenView: View {
                 isVideo: payload.isVideo
             )
         }
-        .alert("Save failed", isPresented: $showSaveError) {
-            Button("OK", role: .cancel) { saveErrorText = "" }
+        .alert(saveAlertTitle, isPresented: $showSaveAlert) {
+            Button("OK", role: .cancel) {
+                saveAlertText = ""
+                showSaveAlert = false
+            }
         } message: {
-            Text(saveErrorText)
+            Text(saveAlertText)
         }
         .sheet(item: $shareItem) { item in
             if !item.activityItems.isEmpty {
@@ -1090,19 +1094,19 @@ struct MainScreenView: View {
         if let image = message.image {
             PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
                 guard status == .authorized || status == .limited else {
-                    DispatchQueue.main.async {
-                        saveErrorText = "Photo library access denied."
-                        showSaveError = true
+                    Task { @MainActor in
+                        presentSaveAlert(title: "Save failed", message: "Photo library access denied.")
                     }
                     return
                 }
                 PHPhotoLibrary.shared().performChanges {
                     PHAssetChangeRequest.creationRequestForAsset(from: image)
                 } completionHandler: { success, error in
-                    DispatchQueue.main.async {
-                        if !success {
-                            saveErrorText = error?.localizedDescription ?? "Failed to save image."
-                            showSaveError = true
+                    Task { @MainActor in
+                        if success {
+                            presentSaveAlert(title: "Saved", message: "Image saved to gallery.")
+                        } else {
+                            presentSaveAlert(title: "Save failed", message: error?.localizedDescription ?? "Failed to save image.")
                         }
                     }
                 }
@@ -1110,26 +1114,38 @@ struct MainScreenView: View {
         } else if let videoURL = message.videoURL {
             PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
                 guard status == .authorized || status == .limited else {
-                    DispatchQueue.main.async {
-                        saveErrorText = "Photo library access denied."
-                        showSaveError = true
+                    Task { @MainActor in
+                        presentSaveAlert(title: "Save failed", message: "Photo library access denied.")
                     }
                     return
                 }
                 PHPhotoLibrary.shared().performChanges {
                     PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: videoURL)
                 } completionHandler: { success, error in
-                    DispatchQueue.main.async {
-                        if !success {
-                            saveErrorText = error?.localizedDescription ?? "Failed to save video."
-                            showSaveError = true
+                    Task { @MainActor in
+                        if success {
+                            presentSaveAlert(title: "Saved", message: "Video saved to gallery.")
+                        } else {
+                            presentSaveAlert(title: "Save failed", message: error?.localizedDescription ?? "Failed to save video.")
                         }
                     }
                 }
             }
         } else {
-            saveErrorText = "No image or video to save."
-            showSaveError = true
+            Task { @MainActor in
+                presentSaveAlert(title: "Save failed", message: "No image or video to save.")
+            }
+        }
+    }
+    
+    @MainActor
+    private func presentSaveAlert(title: String, message: String) {
+        saveAlertTitle = title
+        saveAlertText = message
+        // Принудительный ре-триггер для системного .alert из async completion.
+        showSaveAlert = false
+        DispatchQueue.main.async {
+            showSaveAlert = true
         }
     }
     
@@ -1573,7 +1589,7 @@ struct CustomSwitch: View {
                             }
                         }) {
                             Text(options[index])
-                                .font(.system(size: 17, weight: .semibold))
+                                .font(.system(size: 17, weight: selection == index ? .regular : .semibold))
                                 .foregroundColor(selection == index ? .black : .white)
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 35)
@@ -1818,8 +1834,9 @@ struct ImageViewer: View {
     @Environment(\.dismiss) var dismiss
     @State private var showShareSheet = false
     @State private var showContextMenu = false
-    @State private var saveErrorText = ""
-    @State private var showSaveError = false
+    @State private var saveAlertTitle = "Save failed"
+    @State private var saveAlertText = ""
+    @State private var showSaveAlert = false
     
     var body: some View {
         ZStack {
@@ -1924,10 +1941,10 @@ struct ImageViewer: View {
         .sheet(isPresented: $showShareSheet) {
             ShareSheet(activityItems: shareItems)
         }
-        .alert("Save failed", isPresented: $showSaveError) {
-            Button("OK", role: .cancel) { saveErrorText = "" }
+        .alert(saveAlertTitle, isPresented: $showSaveAlert) {
+            Button("OK", role: .cancel) { saveAlertText = "" }
         } message: {
-            Text(saveErrorText)
+            Text(saveAlertText)
         }
     }
     
@@ -1992,19 +2009,19 @@ struct ImageViewer: View {
         if let image = media.image {
             PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
                 guard status == .authorized || status == .limited else {
-                    DispatchQueue.main.async {
-                        saveErrorText = "Photo library access denied."
-                        showSaveError = true
+                    Task { @MainActor in
+                        presentSaveAlert(title: "Save failed", message: "Photo library access denied.")
                     }
                     return
                 }
                 PHPhotoLibrary.shared().performChanges {
                     PHAssetChangeRequest.creationRequestForAsset(from: image)
                 } completionHandler: { success, error in
-                    DispatchQueue.main.async {
-                        if !success {
-                            saveErrorText = error?.localizedDescription ?? "Failed to save image."
-                            showSaveError = true
+                    Task { @MainActor in
+                        if success {
+                            presentSaveAlert(title: "Saved", message: "Image saved to gallery.")
+                        } else {
+                            presentSaveAlert(title: "Save failed", message: error?.localizedDescription ?? "Failed to save image.")
                         }
                     }
                 }
@@ -2012,26 +2029,38 @@ struct ImageViewer: View {
         } else if let videoURL = media.videoURL {
             PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
                 guard status == .authorized || status == .limited else {
-                    DispatchQueue.main.async {
-                        saveErrorText = "Photo library access denied."
-                        showSaveError = true
+                    Task { @MainActor in
+                        presentSaveAlert(title: "Save failed", message: "Photo library access denied.")
                     }
                     return
                 }
                 PHPhotoLibrary.shared().performChanges {
                     PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: videoURL)
                 } completionHandler: { success, error in
-                    DispatchQueue.main.async {
-                        if !success {
-                            saveErrorText = error?.localizedDescription ?? "Failed to save video."
-                            showSaveError = true
+                    Task { @MainActor in
+                        if success {
+                            presentSaveAlert(title: "Saved", message: "Video saved to gallery.")
+                        } else {
+                            presentSaveAlert(title: "Save failed", message: error?.localizedDescription ?? "Failed to save video.")
                         }
                     }
                 }
             }
         } else {
-            saveErrorText = "No image or video to save."
-            showSaveError = true
+            Task { @MainActor in
+                presentSaveAlert(title: "Save failed", message: "No image or video to save.")
+            }
+        }
+    }
+    
+    @MainActor
+    private func presentSaveAlert(title: String, message: String) {
+        saveAlertTitle = title
+        saveAlertText = message
+        // Принудительный ре-триггер для системного .alert из async completion.
+        showSaveAlert = false
+        DispatchQueue.main.async {
+            showSaveAlert = true
         }
     }
     

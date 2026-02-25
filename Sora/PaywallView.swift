@@ -19,6 +19,7 @@ struct PaywallView: View {
     @EnvironmentObject var tokensStore: TokensStore
     @EnvironmentObject var purchaseManager: PurchaseManager
     @State private var showRestoreAlert = false
+    @State private var canClose = false
     
     /// true = выбран Annual (верхний), false = выбран Weekly (нижний)
     @State private var isAnnualSelected = true
@@ -56,17 +57,19 @@ struct PaywallView: View {
             VStack {
                 HStack {
                     Spacer()
-                    Button(action: { onDismiss?() }) {
-                        Image("xmark")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 36, height: 36)
-                            .foregroundColor(.white)
-                            .contentShape(Rectangle())
+                    if canClose {
+                        Button(action: { onDismiss?() }) {
+                            Image("xmark")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 36, height: 36)
+                                .foregroundColor(.white)
+                                .contentShape(Rectangle())
+                        }
+                        .opacity(0.2)
+                        .padding(.top, 55)
+                        .padding(.trailing, 10)
                     }
-                    .opacity(0.2)
-                    .padding(.top, 55)
-                    .padding(.trailing, 10)
                 }
                 Spacer()
             }
@@ -79,6 +82,13 @@ struct PaywallView: View {
         }
         .clipped()
         .ignoresSafeArea(.all)
+        .onAppear {
+            canClose = false
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                canClose = true
+            }
+        }
         .task { await loadApphudPrices() }
     }
     

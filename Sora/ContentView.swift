@@ -10,6 +10,7 @@ private let lastOpenedChatSessionIdKey = "lastOpenedChatSessionId"
 struct ContentView: View {
     private let store = ChatStore.shared
     @ObservedObject private var ratingPrompt = RatingPromptService.shared
+    @EnvironmentObject private var tokensStore: TokensStore
     @AppStorage(lastOpenedChatSessionIdKey) private var lastOpenedChatSessionIdRaw: String = ""
 
     @State private var currentChatId: UUID?
@@ -24,6 +25,7 @@ struct ContentView: View {
     @State private var sessionItems: [ChatSessionItem] = []
     @State private var showRatingPrompt = false
     @State private var hasRestoredLastSession = false
+    @State private var showTokensPaywall = false
 
     var body: some View {
         Group {
@@ -156,8 +158,17 @@ struct ContentView: View {
                 showRatingPrompt = false
             })
         }
+        .fullScreenCover(isPresented: $showTokensPaywall) {
+            PaywallTokensView(onDismiss: { showTokensPaywall = false })
+                .environmentObject(tokensStore)
+                .environmentObject(PurchaseManager.shared)
+        }
         .alert("Generation failed", isPresented: $showGenerationErrorAlert) {
             Button("OK", role: .cancel) {
+                if let err = generationError,
+                   err.lowercased().contains("insufficient tokens amount") {
+                    showTokensPaywall = true
+                }
                 generationError = nil
             }
         } message: {
