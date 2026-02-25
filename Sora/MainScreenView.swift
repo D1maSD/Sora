@@ -324,12 +324,27 @@ struct RoundedCorner: Shape {
     }
 }
 
+private struct SaveAlertPayload: Identifiable {
+    let id = UUID()
+    let title: String
+    let message: String
+}
+
+private enum ChatGenerationSource {
+    case photo
+    case video
+}
+
 struct MainScreenView: View {
     @EnvironmentObject var tokensStore: TokensStore
     @Binding var messages: [Message]
     @Binding var isLoadingResponse: Bool
     @Binding var generationError: String?
     @Binding var showGenerationErrorAlert: Bool
+    @Binding var isPhotoGenerationInProgress: Bool
+    @Binding var isVideoGenerationInProgress: Bool
+    @Binding var pendingPhotoAnchorMessageId: UUID?
+    @Binding var pendingVideoAnchorMessageId: UUID?
     /// Показывать ProgressView только в той сессии, где запущена генерация.
     var showLoadingInThisChat: Bool = false
     /// Текущая сессия (nil = новый чат до создания).
@@ -367,9 +382,7 @@ struct MainScreenView: View {
     @State private var showTokensPaywall = false
     @State private var generationTask: Task<Void, Never>?
     @State private var shareItem: ShareableItem?
-    @State private var saveAlertTitle = "Save failed"
-    @State private var saveAlertText = ""
-    @State private var showSaveAlert = false
+    @State private var saveAlertPayload: SaveAlertPayload?
     @State private var regeneratingMessageId: UUID?
     @State private var effectsGroups: [EffectsGroupResponse] = []
     @State private var videoGroups: [VideoTemplatesGroupResponse] = []
@@ -495,13 +508,12 @@ struct MainScreenView: View {
                 isVideo: payload.isVideo
             )
         }
-        .alert(saveAlertTitle, isPresented: $showSaveAlert) {
-            Button("OK", role: .cancel) {
-                saveAlertText = ""
-                showSaveAlert = false
-            }
-        } message: {
-            Text(saveAlertText)
+        .alert(item: $saveAlertPayload) { payload in
+            Alert(
+                title: Text(payload.title),
+                message: Text(payload.message),
+                dismissButton: .default(Text("OK"))
+            )
         }
         .sheet(item: $shareItem) { item in
             if !item.activityItems.isEmpty {
@@ -992,7 +1004,6 @@ struct MainScreenView: View {
     private let defaultVideoTemplateId = 1
 
     private func sendMessageTapped() {
-        guard !isLoadingResponse else { return }
         let messageText = textFieldText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !messageText.isEmpty else { return }
         // Фото из AddPhotoBottomSheet: если пользователь добавил — передаём в генерацию; иначе nil.
@@ -1000,6 +1011,11 @@ struct MainScreenView: View {
         let messageVideoURL = selectedVideoURL
 
         if photoVideoSelection == 1 {
+            if isVideoGenerationInProgress {
+                generationError = "Please wait until the previous video generation is finished."
+                showGenerationErrorAlert = true
+                return
+            }
             // Режим video: если в textFieldContainer добавлено видео — передаём в fal/video-enhance ТОЛЬКО после выбора разрешения в меню.
             if messageVideoURL != nil && !userDidOpenVideoResolutionMenu {
                 generationError = "Please select video resolution (720 or 1080) before sending"
@@ -1010,6 +1026,7 @@ struct MainScreenView: View {
             let newMessage = Message(text: messageText, image: messageImage, videoURL: messageVideoURL, isIncoming: false)
             let wasEmpty = messages.isEmpty
             messages = messages + [newMessage]
+            pendingVideoAnchorMessageId = newMessage.id
             textFieldText = ""
             selectedImage = nil
             selectedVideoURL = nil
@@ -1018,6 +1035,7 @@ struct MainScreenView: View {
             let newSessionId = wasEmpty ? onFirstMessageSent?() : nil
             let chatId = newSessionId ?? currentChatId
             onGenerationStarted?(chatId)
+            isVideoGenerationInProgress = true
             isLoadingResponse = true
             generationTask = Task.detached(priority: .userInitiated) { [$generationError, $showGenerationErrorAlert, videoResolutionPx, defaultVideoTemplateId, onGenerationCompleted, onGenerationFailed] in
                 do {
@@ -1033,23 +1051,38 @@ struct MainScreenView: View {
                     }
                     let incoming = Message(text: messageText, image: nil, videoURL: videoURL, isIncoming: true)
                     await MainActor.run {
+                        insertIncomingAtPendingAnchor(incoming, for: .video)
                         onGenerationCompleted?(chatId, incoming)
+                        isVideoGenerationInProgress = false
+                        isLoadingResponse = isPhotoGenerationInProgress || isVideoGenerationInProgress
                     }
                     await tokensStore.load()
                 } catch is CancellationError {
                     await MainActor.run {
+                        removePendingAnchor(for: .video)
+                        isVideoGenerationInProgress = false
                         onGenerationFailed?(chatId)
+                        isLoadingResponse = isPhotoGenerationInProgress || isVideoGenerationInProgress
                     }
                 } catch {
                     let errMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                     print("[Generation] Video error: \(error)")
                     await MainActor.run {
+                        removePendingAnchor(for: .video)
+                        isVideoGenerationInProgress = false
                         $generationError.wrappedValue = errMessage
                         $showGenerationErrorAlert.wrappedValue = true
                         onGenerationFailed?(chatId)
+                        isLoadingResponse = isPhotoGenerationInProgress || isVideoGenerationInProgress
                     }
                 }
             }
+            return
+        }
+        
+        if isPhotoGenerationInProgress {
+            generationError = "Please wait until the previous photo generation is finished."
+            showGenerationErrorAlert = true
             return
         }
 
@@ -1058,12 +1091,14 @@ struct MainScreenView: View {
         let newMessage = Message(text: messageText, image: messageImage, videoURL: nil, isIncoming: false)
         let wasEmpty = messages.isEmpty
         messages = messages + [newMessage]
+        pendingPhotoAnchorMessageId = newMessage.id
         let newSessionId = wasEmpty ? onFirstMessageSent?() : nil
         let chatId = newSessionId ?? currentChatId
         onGenerationStarted?(chatId)
         textFieldText = ""
         selectedImage = nil
         imageFileName = ""
+        isPhotoGenerationInProgress = true
         isLoadingResponse = true
         generationTask = Task.detached(priority: .userInitiated) { [$generationError, $showGenerationErrorAlert, onGenerationCompleted, onGenerationFailed] in
             do {
@@ -1071,20 +1106,29 @@ struct MainScreenView: View {
                 let (resultImage, resultText) = try await GenerationService.shared.runNanobananaAndLoadImage(prompt: promptForGeneration, image: messageImage)
                 let incoming = Message(text: resultText ?? "", image: resultImage, videoURL: nil, isIncoming: true)
                 await MainActor.run {
+                    insertIncomingAtPendingAnchor(incoming, for: .photo)
                     onGenerationCompleted?(chatId, incoming)
+                    isPhotoGenerationInProgress = false
+                    isLoadingResponse = isPhotoGenerationInProgress || isVideoGenerationInProgress
                 }
                 await tokensStore.load()
             } catch is CancellationError {
                 await MainActor.run {
+                    removePendingAnchor(for: .photo)
+                    isPhotoGenerationInProgress = false
                     onGenerationFailed?(chatId)
+                    isLoadingResponse = isPhotoGenerationInProgress || isVideoGenerationInProgress
                 }
             } catch {
                 let errMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                 print("[Generation] Error: \(error)")
                 await MainActor.run {
+                    removePendingAnchor(for: .photo)
+                    isPhotoGenerationInProgress = false
                     $generationError.wrappedValue = errMessage
                     $showGenerationErrorAlert.wrappedValue = true
                     onGenerationFailed?(chatId)
+                    isLoadingResponse = isPhotoGenerationInProgress || isVideoGenerationInProgress
                 }
             }
         }
@@ -1140,12 +1184,36 @@ struct MainScreenView: View {
     
     @MainActor
     private func presentSaveAlert(title: String, message: String) {
-        saveAlertTitle = title
-        saveAlertText = message
-        // Принудительный ре-триггер для системного .alert из async completion.
-        showSaveAlert = false
-        DispatchQueue.main.async {
-            showSaveAlert = true
+        saveAlertPayload = SaveAlertPayload(title: title, message: message)
+    }
+    
+    private func removePendingAnchor(for source: ChatGenerationSource) {
+        switch source {
+        case .photo:
+            pendingPhotoAnchorMessageId = nil
+        case .video:
+            pendingVideoAnchorMessageId = nil
+        }
+    }
+    
+    private func insertIncomingAtPendingAnchor(_ incoming: Message, for source: ChatGenerationSource) {
+        let anchorMessageId: UUID?
+        switch source {
+        case .photo:
+            anchorMessageId = pendingPhotoAnchorMessageId
+            pendingPhotoAnchorMessageId = nil
+        case .video:
+            anchorMessageId = pendingVideoAnchorMessageId
+            pendingVideoAnchorMessageId = nil
+        }
+        guard let anchorMessageId else {
+            messages.append(incoming)
+            return
+        }
+        if let messageIndex = messages.firstIndex(where: { $0.id == anchorMessageId }) {
+            messages.insert(incoming, at: messageIndex + 1)
+        } else {
+            messages.append(incoming)
         }
     }
     
@@ -1155,7 +1223,7 @@ struct MainScreenView: View {
     }
     
     private func regenerateIncomingMessage(_ message: Message) {
-        guard !isLoadingResponse, regeneratingMessageId == nil else { return }
+        guard !(isPhotoGenerationInProgress || isVideoGenerationInProgress), regeneratingMessageId == nil else { return }
         guard let idx = messages.firstIndex(where: { $0.id == message.id }), idx > 0 else {
             generationError = "Cannot find prompt for this message."
             showGenerationErrorAlert = true
@@ -1205,11 +1273,17 @@ struct MainScreenView: View {
         GeometryReader { geometry in
             MessagesListView(
                 messages: messages,
-                isLoadingResponse: showLoadingInThisChat,
+                loadingAnchorMessageIds: [pendingPhotoAnchorMessageId, pendingVideoAnchorMessageId].compactMap { $0 },
                 regeneratingMessageId: regeneratingMessageId,
                 imageToView: $imageToView,
                 onDeleteMessage: { id in
                     messages = messages.filter { $0.id != id }
+                    if pendingPhotoAnchorMessageId == id {
+                        pendingPhotoAnchorMessageId = nil
+                    }
+                    if pendingVideoAnchorMessageId == id {
+                        pendingVideoAnchorMessageId = nil
+                    }
                 },
                 onDownload: saveMessageToGallery,
                 onShare: shareMessage,
@@ -1454,7 +1528,7 @@ struct MainScreenView: View {
 // Отдельный View для списка сообщений
 struct MessagesListView: View {
     let messages: [Message]
-    let isLoadingResponse: Bool
+    let loadingAnchorMessageIds: [UUID]
     let regeneratingMessageId: UUID?
     @Binding var imageToView: IdentifiableMedia?
     let onDeleteMessage: (UUID) -> Void
@@ -1480,6 +1554,7 @@ struct MessagesListView: View {
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 12) {
+                let loadingAnchorSet = Set(loadingAnchorMessageIds)
                 ForEach(messages, id: \.id) { (message: Message) in
                     if message.isIncoming == true {
                                     // Входящее сообщение (слева) или ProgressView при refresh
@@ -1532,23 +1607,23 @@ struct MessagesListView: View {
                                     }
                                     .padding(.horizontal, 40)
                                 }
+                    
+                    // Loading placeholder, привязанный к конкретному исходящему prompt-сообщению.
+                    if !message.isIncoming && loadingAnchorSet.contains(message.id) {
+                        HStack {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 25)
+                                    .fill(Color(hex: "#1F2023"))
+                                    .frame(width: 72, height: 72)
+                                
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    .frame(width: 32, height: 32)
                             }
-                            
-                            // Loading view
-                            if isLoadingResponse {
-                                HStack {
-                                    ZStack {
-                                        RoundedRectangle(cornerRadius: 25)
-                                            .fill(Color(hex: "#1F2023"))
-                                            .frame(width: 72, height: 72)
-                                        
-                                        ProgressView()
-                                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                            .frame(width: 32, height: 32)
-                                    }
-                                    Spacer()
-                                }
-                                .padding(.horizontal, 40)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 40)
+                    }
                             }
                         }
                         .padding(.top, 20)
@@ -2235,6 +2310,10 @@ struct RenameChatAlertView: View {
         isLoadingResponse: .constant(false),
         generationError: .constant(nil),
         showGenerationErrorAlert: .constant(false),
+        isPhotoGenerationInProgress: .constant(false),
+        isVideoGenerationInProgress: .constant(false),
+        pendingPhotoAnchorMessageId: .constant(nil),
+        pendingVideoAnchorMessageId: .constant(nil),
         showLoadingInThisChat: false,
         currentChatId: nil
     )

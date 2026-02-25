@@ -20,6 +20,10 @@ struct ContentView: View {
     @State private var generationChatId: UUID? = nil
     @State private var generationError: String?
     @State private var showGenerationErrorAlert = false
+    @State private var isPhotoGenerationInProgress = false
+    @State private var isVideoGenerationInProgress = false
+    @State private var pendingPhotoAnchorMessageId: UUID?
+    @State private var pendingVideoAnchorMessageId: UUID?
     @State private var historyIsEffectsMode = false
     @State private var showSettings = false
     @State private var sessionItems: [ChatSessionItem] = []
@@ -73,6 +77,10 @@ struct ContentView: View {
                     isLoadingResponse: $isLoadingResponse,
                     generationError: $generationError,
                     showGenerationErrorAlert: $showGenerationErrorAlert,
+                    isPhotoGenerationInProgress: $isPhotoGenerationInProgress,
+                    isVideoGenerationInProgress: $isVideoGenerationInProgress,
+                    pendingPhotoAnchorMessageId: $pendingPhotoAnchorMessageId,
+                    pendingVideoAnchorMessageId: $pendingVideoAnchorMessageId,
                     showLoadingInThisChat: isLoadingResponse && (currentChatId == generationChatId),
                     currentChatId: currentChatId,
                     onOpenHistory: { isEffectsMode in
@@ -95,10 +103,13 @@ struct ContentView: View {
                     },
                     onGenerationCompleted: { chatId, message in
                         if let cid = chatId {
-                            let list = store.fetchMessages(sessionId: cid)
-                            store.saveMessages(sessionId: cid, messages: list + [message])
+                            var orderedMessages = (currentChatId == cid) ? currentChatMessages : store.fetchMessages(sessionId: cid)
+                            if !orderedMessages.contains(where: { $0.id == message.id }) {
+                                orderedMessages.append(message)
+                            }
+                            store.saveMessages(sessionId: cid, messages: orderedMessages)
                             if currentChatId == cid {
-                                currentChatMessages = store.fetchMessages(sessionId: cid)
+                                currentChatMessages = orderedMessages
                             }
                         }
                         if message.videoURL != nil {
