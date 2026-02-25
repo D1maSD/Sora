@@ -565,7 +565,7 @@ struct MainScreenView: View {
     
     // Верхняя часть с свитчерами и кнопками
     private var topSection: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: -10) {
             firstRow
             secondRow
         }
@@ -575,7 +575,7 @@ struct MainScreenView: View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(spacing: 0) {
                 effectsBannerSection
-                    .padding(.top, 0)
+                    .padding(.top, 30)
                 effectsDynamicSection
                     .padding(.bottom, 24)
             }
@@ -1580,7 +1580,7 @@ struct MessagesListView: View {
                                         }
                                         Spacer()
                                     }
-                                    .padding(.horizontal, 40)
+                                    .padding(.horizontal, 30)
                                 } else {
                                     // Исходящее сообщение (справа)
                                     HStack {
@@ -1605,7 +1605,7 @@ struct MessagesListView: View {
                                             }
                                         )
                                     }
-                                    .padding(.horizontal, 40)
+                                    .padding(.horizontal, 20)
                                 }
                     
                     // Loading placeholder, привязанный к конкретному исходящему prompt-сообщению.
@@ -1622,13 +1622,14 @@ struct MessagesListView: View {
                             }
                             Spacer()
                         }
-                        .padding(.horizontal, 40)
+                        .padding(.horizontal, 30)
                     }
                             }
                         }
                         .padding(.top, 20)
                         .padding(.bottom, 20)
                     }
+        .padding(.top, 20)
                 }
     
     
