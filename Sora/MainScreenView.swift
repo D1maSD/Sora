@@ -558,7 +558,7 @@ struct MainScreenView: View {
             }
             .buttonStyle(.plain)
         }
-        .frame(width: 90)
+        .frame(width: 110)
         .background(Color(hex: "#3C3D40"))
         .cornerRadius(12)
     }
@@ -575,11 +575,13 @@ struct MainScreenView: View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(spacing: 0) {
                 effectsBannerSection
-                    .padding(.top, 30)
+                    .padding(.top, 10)
                 effectsDynamicSection
                     .padding(.bottom, 24)
             }
+            .padding(.top, 0)
         }
+        .padding(.top, 20)
         .task(id: "effects-\(photoVideoSelection)") {
             guard chatEffectsSelection == 1 else { return }
             if photoVideoSelection == 0 {
@@ -889,18 +891,22 @@ struct MainScreenView: View {
                 
                 // Градиентная кнопка — баланс токенов (тап открывает paywall покупки токенов)
                 Button(action: { showTokensPaywall = true }) {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 0) {
                         Text("\(tokensStore.tokens)")
                             .font(.system(size: 17, weight: .semibold))
                             .foregroundColor(.white)
-                            .minimumScaleFactor(0.3)
-                        
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.35)
+                            .layoutPriority(1)
+                        Spacer(minLength: 8)
                         Image("sparkles")
                             .resizable()
                             .scaledToFit()
                             .frame(width: 32, height: 32)
                     }
-                    .padding(.horizontal, 12)
+                    .frame(maxWidth: .infinity)
+                    .padding(.leading, 12)
+                    .padding(.trailing, 10)
                     .padding(.vertical, 8)
                     .background(
                         LinearGradient(
@@ -914,7 +920,9 @@ struct MainScreenView: View {
                     )
                     .cornerRadius(12)
                 }
-                .frame(width: gradientButtonWidth - 17, height: 42)
+                .frame(width: gradientButtonWidth - 25, height: 42)
+                .padding(.leading, 2)
+                
             }
             .padding(.leading, sidePadding)
             .padding(.trailing, sidePadding)
