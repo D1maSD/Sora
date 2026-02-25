@@ -29,8 +29,10 @@ struct EffectGenerationRecord: Identifiable {
     var videoPath: String?
     /// Путь к входному фото (для retry при error).
     var inputPhotoPath: String?
+    /// Prompt для retry (нужен для banner-режима и восстановлений после перезапуска).
+    var retryPrompt: String?
 
-    init(id: UUID = UUID(), templateId: Int, isVideo: Bool, status: EffectGenerationStatus, generationId: String? = nil, createdAt: Date = Date(), imagePath: String? = nil, videoPath: String? = nil, inputPhotoPath: String? = nil) {
+    init(id: UUID = UUID(), templateId: Int, isVideo: Bool, status: EffectGenerationStatus, generationId: String? = nil, createdAt: Date = Date(), imagePath: String? = nil, videoPath: String? = nil, inputPhotoPath: String? = nil, retryPrompt: String? = nil) {
         self.id = id
         self.templateId = templateId
         self.isVideo = isVideo
@@ -40,6 +42,7 @@ struct EffectGenerationRecord: Identifiable {
         self.imagePath = imagePath
         self.videoPath = videoPath
         self.inputPhotoPath = inputPhotoPath
+        self.retryPrompt = retryPrompt
     }
 }
 
@@ -52,6 +55,7 @@ private struct EffectGenerationRecordPersistence: Codable {
     let imagePath: String?
     let videoPath: String?
     let inputPhotoPath: String?
+    let retryPrompt: String?
     let errorMessage: String?
     let createdAt: TimeInterval
     let generationId: String?
@@ -114,6 +118,16 @@ final class EffectGenerationStore: ObservableObject {
         guard let idx = records.firstIndex(where: { $0.id == recordId }) else { return }
         let r = records[idx]
         guard case .error = r.status else { return }
+        if r.templateId == 0 {
+            records[idx].status = .processing
+            records[idx].generationId = nil
+            let task: Task<Void, Never> = Task { [weak self] in
+                guard let self else { return }
+                await self.runBannerRetry(recordId: recordId)
+            }
+            pollingTasks[recordId] = task
+            return
+        }
         guard let inputPath = r.inputPhotoPath else { return }
         guard let photo = loadInputPhoto(path: inputPath) else { return }
         records[idx].status = .processing
@@ -144,7 +158,8 @@ final class EffectGenerationStore: ObservableObject {
                         generationId: r.generationId,
                         createdAt: r.createdAt,
                         imagePath: nil,
-                        videoPath: videoPath
+                        videoPath: videoPath,
+                        retryPrompt: r.retryPrompt
                     )
                     self.persistRecords()
                     RatingPromptService.shared.incrementVideoGeneration()
@@ -179,7 +194,8 @@ final class EffectGenerationStore: ObservableObject {
                         createdAt: r.createdAt,
                         imagePath: imagePath,
                         videoPath: nil,
-                        inputPhotoPath: nil
+                        inputPhotoPath: nil,
+                        retryPrompt: r.retryPrompt
                     )
                     self.persistRecords()
                 }
@@ -207,9 +223,42 @@ final class EffectGenerationStore: ObservableObject {
                 createdAt: r.createdAt,
                 imagePath: nil,
                 videoPath: nil,
-                inputPhotoPath: r.inputPhotoPath
+                inputPhotoPath: r.inputPhotoPath,
+                retryPrompt: r.retryPrompt
             )
             self.persistRecords()
+        }
+    }
+
+    private func runBannerRetry(recordId: UUID) async {
+        guard let idx = records.firstIndex(where: { $0.id == recordId }) else { return }
+        let r = records[idx]
+        guard r.templateId == 0, let prompt = r.retryPrompt, !prompt.isEmpty else {
+            await setRecordError(recordId, message: "Unable to retry: missing generation parameters.")
+            return
+        }
+        do {
+            if r.isVideo {
+                let videoURL = try await GenerationService.shared.runFotobudkaTxt2Video(prompt: prompt)
+                await MainActor.run { [weak self] in
+                    self?.setBannerRecordSuccess(recordId: recordId, image: nil, videoURL: videoURL)
+                }
+            } else {
+                guard let inputPath = r.inputPhotoPath, let photo = loadInputPhoto(path: inputPath) else {
+                    await setRecordError(recordId, message: "Unable to retry: source photo is missing.")
+                    return
+                }
+                let (resultImage, _) = try await GenerationService.shared.runNanobananaAndLoadImage(prompt: prompt, image: photo)
+                await MainActor.run { [weak self] in
+                    self?.setBannerRecordSuccess(recordId: recordId, image: resultImage, videoURL: nil)
+                }
+            }
+        } catch {
+            let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            await setRecordError(recordId, message: message)
+        }
+        await MainActor.run { [weak self] in
+            self?.pollingTasks[recordId] = nil
         }
     }
 
@@ -307,7 +356,8 @@ final class EffectGenerationStore: ObservableObject {
                     createdAt: createdAt,
                     imagePath: p.imagePath,
                     videoPath: p.videoPath,
-                    inputPhotoPath: nil
+                    inputPhotoPath: nil,
+                    retryPrompt: p.retryPrompt
                 )
             case "error":
                 return EffectGenerationRecord(
@@ -319,7 +369,8 @@ final class EffectGenerationStore: ObservableObject {
                     createdAt: createdAt,
                     imagePath: nil,
                     videoPath: nil,
-                    inputPhotoPath: p.inputPhotoPath
+                    inputPhotoPath: p.inputPhotoPath,
+                    retryPrompt: p.retryPrompt
                 )
             default:
                 return nil
@@ -340,6 +391,7 @@ final class EffectGenerationStore: ObservableObject {
                     imagePath: r.imagePath,
                     videoPath: r.videoPath,
                     inputPhotoPath: nil,
+                    retryPrompt: r.retryPrompt,
                     errorMessage: nil,
                     createdAt: r.createdAt.timeIntervalSince1970,
                     generationId: r.generationId
@@ -353,6 +405,7 @@ final class EffectGenerationStore: ObservableObject {
                     imagePath: nil,
                     videoPath: nil,
                     inputPhotoPath: r.inputPhotoPath,
+                    retryPrompt: r.retryPrompt,
                     errorMessage: msg,
                     createdAt: r.createdAt.timeIntervalSince1970,
                     generationId: r.generationId
@@ -404,8 +457,9 @@ final class EffectGenerationStore: ObservableObject {
     // MARK: - Banner (Anime/Baby Face/Cube World) — nanobanana/txt2video
 
     /// Добавить запись в processing для баннерной генерации. Возвращает id записи.
-    func addBannerRecordProcessing(isVideo: Bool) -> UUID {
+    func addBannerRecordProcessing(isVideo: Bool, prompt: String, inputImage: UIImage?) -> UUID {
         let id = UUID()
+        let inputPath = (!isVideo && inputImage != nil) ? saveInputPhotoToDisk(inputImage!, recordId: id) : nil
         let record = EffectGenerationRecord(
             id: id,
             templateId: 0,
@@ -413,7 +467,8 @@ final class EffectGenerationStore: ObservableObject {
             status: .processing,
             generationId: nil,
             createdAt: Date(),
-            inputPhotoPath: nil
+            inputPhotoPath: inputPath,
+            retryPrompt: prompt
         )
         records.insert(record, at: 0)
         return id
@@ -440,8 +495,10 @@ final class EffectGenerationStore: ObservableObject {
             createdAt: r.createdAt,
             imagePath: imagePath,
             videoPath: videoPath,
-            inputPhotoPath: nil
+            inputPhotoPath: nil,
+            retryPrompt: r.retryPrompt
         )
+        deleteInputPhoto(path: r.inputPhotoPath)
         persistRecords()
         if r.isVideo {
             RatingPromptService.shared.incrementVideoGeneration()
@@ -461,7 +518,8 @@ final class EffectGenerationStore: ObservableObject {
             createdAt: r.createdAt,
             imagePath: nil,
             videoPath: nil,
-            inputPhotoPath: nil
+            inputPhotoPath: r.inputPhotoPath,
+            retryPrompt: r.retryPrompt
         )
         persistRecords()
     }

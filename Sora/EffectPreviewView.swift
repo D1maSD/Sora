@@ -185,12 +185,14 @@ struct EffectPreviewView: View {
     
     private func submitBannerGeneration(image: UIImage) {
         let style = currentStyleForPrompt
-        let recordId = effectStore.addBannerRecordProcessing(isVideo: isVideo)
+        let prompt = isVideo
+            ? "Generate a video in \(style) style"
+            : "Generate a photo based on this image in \(style) style"
+        let recordId = effectStore.addBannerRecordProcessing(isVideo: isVideo, prompt: prompt, inputImage: image)
         currentEffectRecordId = recordId
         Task { @MainActor in
             do {
                 if isVideo {
-                    let prompt = "Generate a video in \(style) style"
                     let videoURL = try await GenerationService.shared.runFotobudkaTxt2Video(prompt: prompt)
                     effectStore.setBannerRecordSuccess(recordId: recordId, image: nil, videoURL: videoURL)
                     if let path = effectStore.record(by: recordId)?.videoPath {
@@ -200,7 +202,6 @@ struct EffectPreviewView: View {
                     selectedImageForEffect = nil
                     showProcessingError = false
                 } else {
-                    let prompt = "Generate a photo based on this image in \(style) style"
                     let (resultImage, _) = try await GenerationService.shared.runNanobananaAndLoadImage(prompt: prompt, image: image)
                     effectStore.setBannerRecordSuccess(recordId: recordId, image: resultImage, videoURL: nil)
                     resultImageForViewer = IdentifiableImageResult(image: resultImage)
