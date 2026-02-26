@@ -178,7 +178,7 @@ final class APIClient {
         }
         if let img = image {
             body.append("--\(boundary)\r\n".data(using: .utf8)!)
-            body.append("Content-Disposition: form-data; name=\"images[]\"; filename=\"\(img.filename)\"\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"images\"; filename=\"\(img.filename)\"\r\n".data(using: .utf8)!)
             body.append("Content-Type: \(img.mimeType)\r\n\r\n".data(using: .utf8)!)
             body.append(img.data)
             body.append("\r\n".data(using: .utf8)!)
