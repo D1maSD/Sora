@@ -26,6 +26,7 @@ struct EffectPreviewView: View {
     @State private var showProcessingView = false
     @State private var processingProgress: Int = 0
     @State private var showProcessingError = false
+    @State private var showTooManyConcurrentAlert = false
     @State private var resultImageForViewer: IdentifiableImageResult?
     @State private var resultVideoURLForViewer: URL?
     @State private var scrollBannerId: Int?
@@ -119,9 +120,13 @@ struct EffectPreviewView: View {
             if newImage != nil {
                 processingProgress = 0
                 showProcessingError = false
-                showProcessingView = true
                 submitImageForProcessing(newImage!)
             }
+        }
+        .alert("Too many concurrent generations", isPresented: $showTooManyConcurrentAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Please wait until one of your current generations finishes, then try again.")
         }
         .onChange(of: currentEffectRecordStatusKey) { _, newKey in
             guard let id = currentEffectRecordId, let rec = effectStore.record(by: id) else { return }
@@ -175,11 +180,18 @@ struct EffectPreviewView: View {
             return
         }
         guard let tid = templateId else {
+            showProcessingView = true
             startProgressTimer()
             return
         }
         print("[EffectPreview] submitEffect templateId=\(tid) isVideo=\(isVideo)")
-        let recordId = effectStore.startEffect(photo: image, templateId: tid, isVideo: isVideo)
+        guard let recordId = effectStore.startEffect(photo: image, templateId: tid, isVideo: isVideo) else {
+            showProcessingView = false
+            showTooManyConcurrentAlert = true
+            selectedImageForEffect = nil
+            return
+        }
+        showProcessingView = true
         currentEffectRecordId = recordId
     }
     
@@ -188,7 +200,13 @@ struct EffectPreviewView: View {
         let prompt = isVideo
             ? "Generate a video in \(style) style"
             : "Generate a photo based on this image in \(style) style"
-        let recordId = effectStore.addBannerRecordProcessing(isVideo: isVideo, prompt: prompt, inputImage: image)
+        guard let recordId = effectStore.addBannerRecordProcessing(isVideo: isVideo, prompt: prompt, inputImage: image) else {
+            showProcessingView = false
+            showTooManyConcurrentAlert = true
+            selectedImageForEffect = nil
+            return
+        }
+        showProcessingView = true
         currentEffectRecordId = recordId
         Task { @MainActor in
             do {

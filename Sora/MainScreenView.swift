@@ -1214,14 +1214,9 @@ struct MainScreenView: View {
             anchorMessageId = pendingVideoAnchorMessageId
             pendingVideoAnchorMessageId = nil
         }
-        guard let anchorMessageId else {
-            messages.append(incoming)
-            return
-        }
+        guard let anchorMessageId else { return }
         if let messageIndex = messages.firstIndex(where: { $0.id == anchorMessageId }) {
             messages.insert(incoming, at: messageIndex + 1)
-        } else {
-            messages.append(incoming)
         }
     }
     
@@ -1380,6 +1375,10 @@ struct MainScreenView: View {
                                         Text(imageFileName)
                                             .font(.system(size: 15, weight: .regular))
                                             .foregroundColor(.white)
+                                            .lineLimit(1)
+                                            .minimumScaleFactor(0.3)
+                                            .truncationMode(.middle)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
                                     }
                                     
                                     if isLoadingImage {
@@ -1400,11 +1399,12 @@ struct MainScreenView: View {
                                             .scaledToFit()
                                             .frame(width: 22, height: 22)
                                             .foregroundColor(.white)
-                                            .padding(.trailing, 10)
                                     }
+                                    .frame(width: 30, height: 30)
                                     .buttonStyle(.plain)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.trailing, 10)
 //                                .padding(.horizontal, 16)
                                 .padding(.top, 2)
                                 .padding(.bottom, 8)
@@ -1417,8 +1417,25 @@ struct MainScreenView: View {
                                     Text(videoURL.lastPathComponent)
                                         .font(.system(size: 15, weight: .regular))
                                         .foregroundColor(.white)
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.3)
+                                        .truncationMode(.middle)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                    Spacer(minLength: 0)
+                                    Button(action: {
+                                        selectedVideoURL = nil
+                                    }) {
+                                        Image("xmark")
+                                            .resizable()
+                                            .scaledToFit()
+                                            .frame(width: 22, height: 22)
+                                            .foregroundColor(.white)
+                                    }
+                                    .frame(width: 30, height: 30)
+                                    .buttonStyle(.plain)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.trailing, 10)
                                 .padding(.top, 2)
                                 .padding(.bottom, 8)
                             }
@@ -1502,7 +1519,7 @@ struct MainScreenView: View {
                                     .font(.system(size: 12, weight: .regular))
                                     .foregroundColor(.white.opacity(0.7))
                                 
-                                Text("10 tokens")
+                                Text(photoVideoSelection == 0 ? "30 tokens" : "20 tokens")
                                     .font(.system(size: 12, weight: .regular))
                                     .foregroundColor(.blue)
                             }

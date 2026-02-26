@@ -67,6 +67,7 @@ final class EffectGenerationStore: ObservableObject {
 
     @Published private(set) var records: [EffectGenerationRecord] = []
     private var pollingTasks: [UUID: Task<Void, Never>] = [:]
+    private let maxConcurrentPerMediaType = 2
 
     private static let persistenceFileName = "effect_generations.json"
     private static let imagesSubdirectory = "EffectGenerations"
@@ -91,7 +92,8 @@ final class EffectGenerationStore: ObservableObject {
 
     /// Запускает генерацию эффекта. Polling выполняется в фоне; закрытие экрана его не прерывает.
     /// - Returns: id записи для подписки на результат в UI.
-    func startEffect(photo: UIImage, templateId: Int, isVideo: Bool) -> UUID {
+    func startEffect(photo: UIImage, templateId: Int, isVideo: Bool) -> UUID? {
+        guard processingCount(isVideo: isVideo) < maxConcurrentPerMediaType else { return nil }
         let id = UUID()
         let inputPath = saveInputPhotoToDisk(photo, recordId: id)
         let record = EffectGenerationRecord(
@@ -118,6 +120,7 @@ final class EffectGenerationStore: ObservableObject {
         guard let idx = records.firstIndex(where: { $0.id == recordId }) else { return }
         let r = records[idx]
         guard case .error = r.status else { return }
+        guard processingCount(isVideo: r.isVideo) < maxConcurrentPerMediaType else { return }
         if r.templateId == 0 {
             records[idx].status = .processing
             records[idx].generationId = nil
@@ -457,7 +460,8 @@ final class EffectGenerationStore: ObservableObject {
     // MARK: - Banner (Anime/Baby Face/Cube World) — nanobanana/txt2video
 
     /// Добавить запись в processing для баннерной генерации. Возвращает id записи.
-    func addBannerRecordProcessing(isVideo: Bool, prompt: String, inputImage: UIImage?) -> UUID {
+    func addBannerRecordProcessing(isVideo: Bool, prompt: String, inputImage: UIImage?) -> UUID? {
+        guard processingCount(isVideo: isVideo) < maxConcurrentPerMediaType else { return nil }
         let id = UUID()
         let inputPath = (!isVideo && inputImage != nil) ? saveInputPhotoToDisk(inputImage!, recordId: id) : nil
         let record = EffectGenerationRecord(
@@ -472,6 +476,14 @@ final class EffectGenerationStore: ObservableObject {
         )
         records.insert(record, at: 0)
         return id
+    }
+
+    private func processingCount(isVideo: Bool) -> Int {
+        records.filter { record in
+            guard record.isVideo == isVideo else { return false }
+            if case .processing = record.status { return true }
+            return false
+        }.count
     }
 
     /// Обновить баннерную запись на success. Сохраняет image/video на диск.
