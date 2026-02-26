@@ -1013,7 +1013,8 @@ struct MainScreenView: View {
 
     private func sendMessageTapped() {
         let messageText = textFieldText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !messageText.isEmpty else { return }
+        let canSendWithStyleOnly = (photoVideoSelection == 0 && selectedStyleName != nil)
+        guard !messageText.isEmpty || canSendWithStyleOnly else { return }
         // Фото из AddPhotoBottomSheet: если пользователь добавил — передаём в генерацию; иначе nil.
         let messageImage = selectedImage
         let messageVideoURL = selectedVideoURL
@@ -1095,8 +1096,16 @@ struct MainScreenView: View {
         }
 
         // Режим photo: nanobanana
-        let promptForGeneration = selectedStyleName.map { "\(messageText) style: \($0)" } ?? messageText
-        let newMessage = Message(text: messageText, image: messageImage, videoURL: nil, isIncoming: false)
+        let promptForGeneration: String
+        if let style = selectedStyleName {
+            promptForGeneration = messageText.isEmpty
+                ? "Generate a photo in \(style) style"
+                : "\(messageText) style: \(style)"
+        } else {
+            promptForGeneration = messageText
+        }
+        let outgoingText = messageText.isEmpty ? (selectedStyleName.map { "Style: \($0)" } ?? "") : messageText
+        let newMessage = Message(text: outgoingText, image: messageImage, videoURL: nil, isIncoming: false)
         let wasEmpty = messages.isEmpty
         messages = messages + [newMessage]
         pendingPhotoAnchorMessageId = newMessage.id
@@ -1530,7 +1539,7 @@ struct MainScreenView: View {
                         .cornerRadius(16)
                         
                         // Кнопка top_arrow - появляется когда есть текст
-                        if !textFieldText.isEmpty {
+                        if !textFieldText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (photoVideoSelection == 0 && selectedStyleName != nil) {
                             Button(action: sendMessageTapped) {
                                 Image("top_arrow")
                                     .resizable()
