@@ -152,10 +152,9 @@ struct PaywallView: View {
                             ZStack(alignment: .leading) {
                                 Image(isAnnualSelected ? "firstOn" : "firstOff")
                                     .resizable()
-                                    .scaledToFill()
-                                    .frame(height: 60)
-                                    .clipped()
-                                    .cornerRadius(14)
+                                    .scaledToFit()
+                                    .frame(maxWidth: .infinity)
+                                    .clipShape(RoundedRectangle(cornerRadius: 14))
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text("Just $\(yearlyPriceString) / Annual")
                                         .font(.system(size: 17, weight: .semibold))
@@ -175,10 +174,9 @@ struct PaywallView: View {
                             ZStack(alignment: .leading) {
                                 Image(isAnnualSelected ? "secondOff" : "secondOn")
                                     .resizable()
-                                    .scaledToFill()
-                                    .frame(height: 60)
-                                    .clipped()
-                                    .cornerRadius(14)
+                                    .scaledToFit()
+                                    .frame(maxWidth: .infinity)
+                                    .clipShape(RoundedRectangle(cornerRadius: 14))
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text("Just $\(weeklyPriceString) / Weekly")
                                         .font(.system(size: 17, weight: .semibold))
@@ -194,7 +192,7 @@ struct PaywallView: View {
                         }
                         .buttonStyle(.plain)
                     }
-                    .padding(.horizontal, 70)
+                    .padding(.horizontal, 26)
                     .padding(.bottom, 0)
                     
                     HStack(spacing: 2) {
