@@ -10,8 +10,11 @@ import ApphudSDK
 
 /// Ссылки для политик (открываются во внешнем браузере).
 enum PolicyURL {
-    static let privacy = "https://www.ya.ru/"
-    static let usageTerms = "https://www.google.com/"
+    static let privacy = "https://docs.google.com/document/d/1dr3r46-fKTq5DRMSh1udUKOXxpNvB2BGG0iA2x78UCw/edit?usp=sharing"
+    static let usageTerms = "https://docs.google.com/document/d/16W_53WdEkA8LYLgoqplKj1hVqfryZzDBIwjNgkV6D58/edit?usp=sharing"
+    static let appstoreLink = "https://apps.apple.com/us/app/velmira-ai-video-generator/id6759724131"
+    static let supportLink = "https://forms.gle/NPFjqanjYhaenH7J8"
+    
 }
 
 /// Единый источник ключа Apphud. Сейчас используется ключ из Demo (tokens paywall).

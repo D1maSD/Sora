@@ -31,7 +31,8 @@ struct SettingsView: View {
     }
     
     private var shareActivityItems: [Any] {
-        ["Check out the Sora app!"]
+        let url = URL(string: "https://apps.apple.com/app/id6759724131")!
+        return [url]
     }
     
     var body: some View {
@@ -189,7 +190,11 @@ struct SettingsView: View {
     
     private var infoLegalSection: some View {
         settingsSection(title: "Info & legal") {
-            settingsRow(icon: "messageBlue", title: "Contact us")
+            settingsRow(icon: "messageBlue", title: "Contact us", action: {
+                if let url = URL(string: "https://forms.gle/NPFjqanjYhaenH7J8") {
+                    UIApplication.shared.open(url)
+                }
+            })
             settingsRow(icon: "fileBlue", title: "Privacy Policy", action: {
                 if let url = URL(string: PolicyURL.privacy) { UIApplication.shared.open(url) }
             })

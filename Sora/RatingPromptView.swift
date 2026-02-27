@@ -55,6 +55,9 @@ struct RatingPromptView: View {
 
                 HStack(spacing: 12) {
                     Button(action: {
+                        if let url = URL(string: "https://forms.gle/NPFjqanjYhaenH7J8") {
+                            UIApplication.shared.open(url)
+                        }
                         RatingPromptService.shared.dismissPrompt()
                         onDismiss()
                     }) {
@@ -69,9 +72,8 @@ struct RatingPromptView: View {
                     .buttonStyle(.plain)
 
                     Button(action: {
-                        // Сейчас: SKStoreReviewController — системное окно оценки (звёзды + текст). Когда приложение выложено — можно открывать App Store URL для отзыва.
-                        if let windowScene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene {
-                            SKStoreReviewController.requestReview(in: windowScene)
+                        if let url = URL(string: "https://apps.apple.com/us/app/velmira-ai-video-generator/id6759724131") {
+                            UIApplication.shared.open(url)
                         }
                         RatingPromptService.shared.markRated()
                         onDismiss()
