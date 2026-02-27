@@ -19,6 +19,7 @@ struct PaywallTokensView: View {
     @Environment(\.dismiss) var dismiss
 
     @State private var pickedProd: ApphudProduct?
+    @State private var pickedAdaptyProductId: String?
     @State private var showErrorAlert = false
     @State private var canClose = false
 
@@ -101,7 +102,9 @@ struct PaywallTokensView: View {
     }
 
     private func tokensContent(geo: GeometryProxy) -> some View {
-        VStack {
+        let isAdaptyMode = AppFeatures.useAdaptyCatalog
+        let hasProducts = purchaseManager.hasTokenProductsForCurrentProvider
+        return VStack {
             Spacer()
             VStack(alignment: .center, spacing: 8) {
                 Text("Need more generations?")
@@ -121,7 +124,7 @@ struct PaywallTokensView: View {
             }
             .padding(.bottom, 24)
 
-            if purchaseManager.tokenProducts.isEmpty {
+            if !hasProducts {
                 VStack(spacing: 12) {
                     ProgressView()
                         .progressViewStyle(.circular)
@@ -138,16 +141,32 @@ struct PaywallTokensView: View {
                 .padding(.vertical, 32)
             } else {
                 VStack(spacing: 12) {
-                    ForEach(purchaseManager.tokenProducts, id: \.productId) { product in
-                        Button {
-                            pickedProd = product
-                        } label: {
-                            productCard(prod: product, isPicked: pickedProd == product)
+                    if isAdaptyMode {
+                        ForEach(purchaseManager.adaptyTokenProductIds, id: \.self) { productId in
+                            Button {
+                                pickedAdaptyProductId = productId
+                            } label: {
+                                productCardById(productId: productId, isPicked: pickedAdaptyProductId == productId)
+                            }
+                            .buttonStyle(.plain)
+                            .onAppear {
+                                if pickedAdaptyProductId == nil {
+                                    pickedAdaptyProductId = productId
+                                }
+                            }
                         }
-                        .buttonStyle(.plain)
-                        .onAppear {
-                            if pickedProd == nil || (pickedProd?.price ?? 0) > product.price {
+                    } else {
+                        ForEach(purchaseManager.tokenProducts, id: \.productId) { product in
+                            Button {
                                 pickedProd = product
+                            } label: {
+                                productCard(prod: product, isPicked: pickedProd == product)
+                            }
+                            .buttonStyle(.plain)
+                            .onAppear {
+                                if pickedProd == nil || (pickedProd?.price ?? 0) > product.price {
+                                    pickedProd = product
+                                }
                             }
                         }
                     }
@@ -156,17 +175,31 @@ struct PaywallTokensView: View {
                 .padding(.bottom, 24)
             }
 
-            if !purchaseManager.tokenProducts.isEmpty {
+            if hasProducts {
                 Button {
-                    guard let pickedProd else { return }
-                    purchaseManager.makePurchase(product: pickedProd) { success, _ in
-                        if success {
-                            let added = Self.tokensCount(from: pickedProd.productId)
-                            if added > 0 {
-                                tokensStore.tokens += added
+                    if isAdaptyMode {
+                        guard let pickedAdaptyProductId else { return }
+                        purchaseManager.makePurchase(productId: pickedAdaptyProductId) { success, _ in
+                            if success {
+                                let added = Self.tokensCount(from: pickedAdaptyProductId)
+                                if added > 0 {
+                                    tokensStore.tokens += added
+                                }
+                                onDismiss?()
+                                dismiss()
                             }
-                            onDismiss?()
-                            dismiss()
+                        }
+                    } else {
+                        guard let pickedProd else { return }
+                        purchaseManager.makePurchase(product: pickedProd) { success, _ in
+                            if success {
+                                let added = Self.tokensCount(from: pickedProd.productId)
+                                if added > 0 {
+                                    tokensStore.tokens += added
+                                }
+                                onDismiss?()
+                                dismiss()
+                            }
                         }
                     }
                 } label: {
@@ -179,7 +212,7 @@ struct PaywallTokensView: View {
                             RoundedRectangle(cornerRadius: 28)
                                 .fill(
                                     LinearGradient(
-                                        colors: pickedProd == nil || purchaseManager.isLoading
+                                        colors: ((isAdaptyMode ? (pickedAdaptyProductId == nil) : (pickedProd == nil)) || purchaseManager.isLoading)
                                             ? [Color.gray.opacity(0.5), Color.gray.opacity(0.5)]
                                             : [Color(hex: "#6CABE9"), Color(hex: "#2F76BC")],
                                         startPoint: .leading,
@@ -189,7 +222,7 @@ struct PaywallTokensView: View {
                         )
                         .contentShape(RoundedRectangle(cornerRadius: 28))
                 }
-                .disabled(pickedProd == nil || purchaseManager.isLoading)
+                .disabled((isAdaptyMode ? (pickedAdaptyProductId == nil) : (pickedProd == nil)) || purchaseManager.isLoading)
                 .padding(.horizontal, 24)
                 .padding(.bottom, 24)
             }
@@ -234,7 +267,42 @@ struct PaywallTokensView: View {
             }
             .padding(.horizontal, 10)
             Spacer()
-            Text(prod.localizedPrice)
+            Text(purchaseManager.displayPrice(for: prod))
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundColor(.white)
+            Image(systemName: "chevron.right")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.white.opacity(0.6))
+                .padding(.trailing, 10)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 23)
+        .background(Color(hex: "#1F2022"))
+        .cornerRadius(14)
+        .overlay {
+            if isPicked {
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(Color(hex: "#6CABE9"), lineWidth: 2)
+            }
+        }
+        .animation(.snappy(duration: 0.2), value: isPicked)
+        .contentShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    @ViewBuilder
+    private func productCardById(productId: String, isPicked: Bool) -> some View {
+        HStack {
+            HStack(spacing: 4) {
+                Text(PaywallTokensView.tokensString(Self.tokensCount(from: productId)))
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(.white)
+                Text(" tokens")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.5))
+            }
+            .padding(.horizontal, 10)
+            Spacer()
+            Text(purchaseManager.displayPriceValue(for: productId) ?? "...")
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundColor(.white)
             Image(systemName: "chevron.right")

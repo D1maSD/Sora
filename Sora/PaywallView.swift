@@ -273,6 +273,19 @@ struct PaywallView: View {
     
     /// Загружает цены из Apphud (yearly_49.99_not_trial, week_6.99_not_trial) и обновляет UI.
     private func loadApphudPrices() async {
+        if AppFeatures.useAdaptyCatalog {
+            if let yearly = purchaseManager.displayPriceValue(for: "yearly_49.99_nottrial")
+                ?? purchaseManager.displayPriceValue(for: "yearly_39.99_nottrial") {
+                await MainActor.run { yearlyPriceString = yearly }
+            }
+            if let weekly = purchaseManager.displayPriceValue(for: "week_6.99_nottrial") {
+                await MainActor.run { weeklyPriceString = weekly }
+            }
+            if yearlyPriceString != "49.99" || weeklyPriceString != "6.99" {
+                return
+            }
+        }
+
         let placementId = "main"
         guard let placement = await Apphud.placement(placementId),
               let paywall = placement.paywall else { return }

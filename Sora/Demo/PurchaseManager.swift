@@ -3,6 +3,9 @@ import Combine
 import ApphudSDK
 import AdServices
 import OSLog
+#if canImport(Adapty)
+import Adapty
+#endif
 
 @MainActor
 final class PurchaseManager: ObservableObject {
@@ -35,6 +38,7 @@ final class PurchaseManager: ObservableObject {
     @Published private(set) var products: [ApphudProduct] = []
     @Published private(set) var tokenProducts: [ApphudProduct] = []
     @Published private(set) var avatarsProducts: [ApphudProduct] = []
+    @Published private(set) var adaptyTokenProductIds: [String] = []
     
     @Published private(set) var isSubscribed: Bool = false
     @Published private(set) var purchaseState: PurchaseState = .idle
@@ -49,11 +53,10 @@ final class PurchaseManager: ObservableObject {
     @Published var avatars: Int = 0
     
     public var userId: String {
-#if DEBUG
-        Apphud.userID()
-#else
-        Apphud.userID()
-#endif
+        if AppFeatures.useAdaptyCatalog {
+            return ""
+        }
+        return Apphud.userID()
     }
     
     var isReady: Bool {
@@ -66,10 +69,28 @@ final class PurchaseManager: ObservableObject {
 
     static let shared = PurchaseManager()
     
+    // TODO(HYBRID-CATALOG): Known production product IDs used for catalog matching.
+    // Purchases still execute via Apphud, these IDs are used only to safely filter catalog source.
+    private let knownTokenProductIds: Set<String> = [
+        "100_Tokens_9.99",
+        "250_Tokens_19.99",
+        "500_Tokens_34.99",
+        "1000_Tokens_59.99",
+        "2000_Tokens_99.99"
+    ].map { $0.lowercased() }.reduce(into: Set<String>()) { $0.insert($1) }
+    
+    private let knownSubscriptionProductIds: Set<String> = [
+        "week_6.99_nottrial",
+        "yearly_49.99_nottrial",
+        "yearly_39.99_nottrial"
+    ].map { $0.lowercased() }.reduce(into: Set<String>()) { $0.insert($1) }
+    
     private init() {
-        logger.info("PurchaseManager: Initializing (Apphud started in SoraApp with ApphudConfig.currentKey)")
-        Apphud.setPaywallsCacheTimeout(3600)
-        // Apphud.start вызывается один раз в SoraApp с ключом ApphudConfig.currentKey (Demo ключ)
+        logger.info("PurchaseManager: Initializing")
+        if !AppFeatures.useAdaptyCatalog {
+            Apphud.setPaywallsCacheTimeout(3600)
+            // Apphud.start вызывается один раз в SoraApp с ключом ApphudConfig.currentKey
+        }
         
         if let storedTokens = KeychainManager.shared.loadInt(forKey: "tokens") {
             self.tokens = storedTokens
@@ -96,31 +117,93 @@ final class PurchaseManager: ObservableObject {
 //        self.isSubscribed = Apphud.hasPremiumAccess()
         self.isSubscribed = false
 #else
-        self.isSubscribed = Apphud.hasPremiumAccess()
+        self.isSubscribed = AppFeatures.useAdaptyCatalog ? false : Apphud.hasPremiumAccess()
 #endif
         isShowedPaywall = !isSubscribed && isOnboardingFinished
     }
     
     private func loadPaywalls() async {
         logger.info("PurchaseManager: Starting paywall fetch")
-        let paywalls = await Apphud.fetchPaywallsWithFallback()
-        logger.info("PurchaseManager: Fetched \(paywalls.count) paywalls")
-        self.configure(with: paywalls)
+        // TODO(HYBRID-CATALOG): Catalog source can be Apphud or Adapty.
+        // Purchase execution remains Apphud-based.
+        let provider = ProductProviderFactory.make()
+        do {
+            let catalogPaywalls = try await provider.fetchPaywalls()
+            logger.info("PurchaseManager: Catalog paywalls fetched: \(catalogPaywalls.count)")
+            if AppFeatures.useAdaptyCatalog {
+                self.configureForAdaptyCatalog(catalogPaywalls)
+            } else {
+                let apphudProvider = ApphudProductProvider()
+                let apphudPaywalls = await apphudProvider.fetchRawPaywalls()
+                self.configure(with: catalogPaywalls, apphudPaywalls: apphudPaywalls)
+            }
+        } catch {
+            if AppFeatures.useAdaptyCatalog {
+                logger.error("PurchaseManager: Catalog provider failed in Adapty mode - \(error.localizedDescription)")
+                await MainActor.run {
+                    self.purchaseState = .error("Unable to load products")
+                }
+                return
+            }
+            logger.error("PurchaseManager: Catalog provider failed, fallback to Apphud catalog - \(error.localizedDescription)")
+            let apphudProvider = ApphudProductProvider()
+            let apphudPaywalls = await apphudProvider.fetchRawPaywalls()
+            let fallbackCatalog = apphudPaywalls.map { PaywallModel(identifier: $0.identifier, productIds: $0.products.map(\.productId)) }
+            self.configure(with: fallbackCatalog, apphudPaywalls: apphudPaywalls)
+        }
     }
 
-    private func configure(with paywalls: [ApphudPaywall]) {
-        logger.info("PurchaseManager: Configuring paywalls, received \(paywalls.count) paywalls")
-        logger.info("PurchaseManager: Available paywall identifiers: \(paywalls.map { $0.identifier }.joined(separator: ", "))")
+    private func configureForAdaptyCatalog(_ catalogPaywalls: [PaywallModel]) {
+        let catalogByIdentifier = Dictionary(uniqueKeysWithValues: catalogPaywalls.map { ($0.identifier, $0) })
+        let globalCatalogIds = Set(catalogPaywalls.flatMap(\.productIds).map { $0.lowercased() })
+
+        let mainIds = (catalogByIdentifier["main"]?.productIds ?? []).map { $0.lowercased() }
+        let selectedMainIds = mainIds.isEmpty
+            ? Array(globalCatalogIds.intersection(knownSubscriptionProductIds))
+            : mainIds
+        self.products = []
+        self.paywall = nil
+
+        let tokenIds = (catalogByIdentifier["tokens"]?.productIds ?? []).map { $0.lowercased() }
+        let selectedTokenIds = tokenIds.isEmpty
+            ? Array(globalCatalogIds.intersection(knownTokenProductIds))
+            : tokenIds
+        self.tokenProducts = []
+        self.adaptyTokenProductIds = selectedTokenIds
+        self.paywallTokens = nil
+
+        self.avatarsProducts = []
+        self.paywallAvatars = nil
+
+        if !selectedMainIds.isEmpty || !selectedTokenIds.isEmpty {
+            purchaseState = .ready
+            purchaseError = nil
+            logger.info("PurchaseManager: Adapty catalog configured. subs=\(selectedMainIds.count), tokens=\(selectedTokenIds.count)")
+        } else {
+            purchaseState = .error("Catalog options are not available. Please try again.")
+            purchaseError = "Catalog options are not available. Please try again."
+            logger.error("PurchaseManager: Adapty catalog configuration failed - no products")
+        }
+    }
+
+    private func configure(with catalogPaywalls: [PaywallModel], apphudPaywalls: [ApphudPaywall]) {
+        logger.info("PurchaseManager: Configuring paywalls, catalog count \(catalogPaywalls.count), apphud count \(apphudPaywalls.count)")
+        logger.info("PurchaseManager: Catalog identifiers: \(catalogPaywalls.map { $0.identifier }.joined(separator: ", "))")
+        let catalogByIdentifier = Dictionary(uniqueKeysWithValues: catalogPaywalls.map { ($0.identifier, $0) })
+        let globalCatalogIds = Set(catalogPaywalls.flatMap(\.productIds).map { $0.lowercased() })
         
-        if let main = paywalls.first(where: { $0.identifier == "main" }) ?? paywalls.first {
+        if let main = apphudPaywalls.first(where: { $0.identifier == "main" }) ?? apphudPaywalls.first {
+            let identifierScopedIds = Set((catalogByIdentifier[main.identifier]?.productIds ?? []).map { $0.lowercased() })
+            let fallbackIds = globalCatalogIds.intersection(knownSubscriptionProductIds)
+            let selectedProducts = filterProducts(main.products, preferredIds: identifierScopedIds, fallbackIds: fallbackIds)
             self.paywall = main
-            self.products = main.products
-            logger.info("PurchaseManager: Configured main paywall '\(main.identifier)' with \(main.products.count) products")
+            self.products = selectedProducts
+            logger.info("PurchaseManager: Configured main paywall '\(main.identifier)' with \(selectedProducts.count) products")
             
-            if main.products.isEmpty {
+            if selectedProducts.isEmpty {
                 logger.warning("PurchaseManager: Main paywall has no products!")
             } else {
-                let productIds = main.products.map { $0.productId }.joined(separator: ", ")
+                let productIds = selectedProducts.map { $0.productId }.joined(separator: ", ")
                 logger.info("PurchaseManager: Main paywall products: \(productIds)")
             }
         } else {
@@ -129,13 +212,16 @@ final class PurchaseManager: ObservableObject {
             self.products = []
         }
         
-        if let tokens = paywalls.first(where: { $0.identifier == "tokens" }) {
+        if let tokens = apphudPaywalls.first(where: { $0.identifier == "tokens" }) {
+            let identifierScopedIds = Set((catalogByIdentifier[tokens.identifier]?.productIds ?? []).map { $0.lowercased() })
+            let fallbackIds = globalCatalogIds.intersection(knownTokenProductIds)
+            let selectedProducts = filterProducts(tokens.products, preferredIds: identifierScopedIds, fallbackIds: fallbackIds)
             self.paywallTokens = tokens
-            self.tokenProducts = tokens.products
-            logger.info("PurchaseManager: Configured tokens paywall '\(tokens.identifier)' with \(tokens.products.count) products")
+            self.tokenProducts = selectedProducts
+            logger.info("PurchaseManager: Configured tokens paywall '\(tokens.identifier)' with \(selectedProducts.count) products")
             
-            if !tokens.products.isEmpty {
-                let productIds = tokens.products.map { $0.productId }.joined(separator: ", ")
+            if !selectedProducts.isEmpty {
+                let productIds = selectedProducts.map { $0.productId }.joined(separator: ", ")
                 logger.info("PurchaseManager: Tokens paywall products: \(productIds)")
             }
         } else {
@@ -144,13 +230,15 @@ final class PurchaseManager: ObservableObject {
             self.tokenProducts = []
         }
         
-        if let avatars = paywalls.first(where: { $0.identifier == "avatars" }) {
+        if let avatars = apphudPaywalls.first(where: { $0.identifier == "avatars" }) {
+            let identifierScopedIds = Set((catalogByIdentifier[avatars.identifier]?.productIds ?? []).map { $0.lowercased() })
+            let selectedProducts = filterProducts(avatars.products, preferredIds: identifierScopedIds, fallbackIds: [])
             self.paywallAvatars = avatars
-            self.avatarsProducts = avatars.products
-            logger.info("PurchaseManager: Configured avatars paywall '\(avatars.identifier)' with \(avatars.products.count) products")
+            self.avatarsProducts = selectedProducts
+            logger.info("PurchaseManager: Configured avatars paywall '\(avatars.identifier)' with \(selectedProducts.count) products")
             
-            if !avatars.products.isEmpty {
-                let productIds = avatars.products.map { $0.productId }.joined(separator: ", ")
+            if !selectedProducts.isEmpty {
+                let productIds = selectedProducts.map { $0.productId }.joined(separator: ", ")
                 logger.info("PurchaseManager: Avatars paywall products: \(productIds)")
             }
         } else {
@@ -174,6 +262,116 @@ final class PurchaseManager: ObservableObject {
         print("[Paywalls] tokens=\(paywallTokens?.identifier ?? "nil") tokenProducts=\(tokenProducts.count)")
         print("[Paywalls] avatars=\(paywallAvatars?.identifier ?? "nil") avatarsProducts=\(avatarsProducts.count)")
         #endif
+    }
+    
+    private func filterProducts(
+        _ products: [ApphudProduct],
+        preferredIds: Set<String>,
+        fallbackIds: Set<String>
+    ) -> [ApphudProduct] {
+        if !preferredIds.isEmpty {
+            let filtered = products.filter { preferredIds.contains($0.productId.lowercased()) }
+            if !filtered.isEmpty { return filtered }
+        }
+        if !fallbackIds.isEmpty {
+            let filtered = products.filter { fallbackIds.contains($0.productId.lowercased()) }
+            if !filtered.isEmpty { return filtered }
+        }
+        return products
+    }
+
+    var hasTokenProductsForCurrentProvider: Bool {
+        if AppFeatures.useAdaptyCatalog {
+            return !adaptyTokenProductIds.isEmpty
+        }
+        return !tokenProducts.isEmpty
+    }
+
+    func displayPrice(for product: ApphudProduct) -> String {
+        #if canImport(Adapty)
+        if AppFeatures.useAdaptyCatalog,
+           let adaptyPrice = AdaptyCatalogCache.shared.localizedPrice(for: product.productId),
+           !adaptyPrice.isEmpty {
+            return adaptyPrice
+        }
+        #endif
+        return product.localizedPrice
+    }
+
+    func displayPriceValue(for productId: String) -> String? {
+        #if canImport(Adapty)
+        if AppFeatures.useAdaptyCatalog,
+           let adaptyPrice = AdaptyCatalogCache.shared.localizedPrice(for: productId),
+           !adaptyPrice.isEmpty {
+            return numericPart(from: adaptyPrice)
+        }
+        #endif
+        return nil
+    }
+
+    func makePurchase(productId: String, completion: @escaping(Bool, String?) -> Void) {
+        guard purchaseState != .purchasing else {
+            completion(false, "Purchase already in progress")
+            return
+        }
+        purchaseState = .purchasing
+        purchaseError = nil
+        Task { @MainActor in
+            let success: Bool
+            if AppFeatures.useAdaptyCatalog {
+                success = await makeAdaptyPurchase(productId: productId)
+            } else {
+                guard let product = (products + tokenProducts + avatarsProducts).first(where: { $0.productId == productId }) else {
+                    let msg = "Selected product is not available"
+                    purchaseError = msg
+                    purchaseState = .ready
+                    completion(false, msg)
+                    return
+                }
+                success = await Apphud.fallbackPurchase(product: product)
+            }
+
+            if success {
+                let isTokenProduct = knownTokenProductIds.contains(productId.lowercased())
+                let isAvatarProduct = productId.lowercased().contains("avatar")
+                if isTokenProduct {
+                    let tokensToAdd = extractTokensCount(from: productId)
+                    if tokensToAdd > 0 {
+                        self.tokens += tokensToAdd
+                        Task.detached { [tokens = self.tokens] in
+                            _ = await KeychainManager.shared.save(tokens, forKey: "tokens")
+                        }
+                    }
+                }
+                if isAvatarProduct {
+                    let avatarsToAdd = extractTokensCount(from: productId)
+                    if avatarsToAdd > 0 {
+                        self.avatars += avatarsToAdd
+                        Task.detached { [avatars = self.avatars] in
+                            _ = await KeychainManager.shared.save(avatars, forKey: "avatars")
+                        }
+                    }
+                }
+                if !AppFeatures.useAdaptyCatalog {
+                    self.isSubscribed = Apphud.hasPremiumAccess()
+                }
+                purchaseState = .ready
+                purchaseError = nil
+                completion(true, nil)
+            } else {
+                let msg = purchaseError ?? "Purchase was not completed. Please try again."
+                purchaseState = .ready
+                purchaseError = msg
+                completion(false, msg)
+            }
+        }
+    }
+
+    private func numericPart(from localizedPrice: String) -> String {
+        let allowed = CharacterSet(charactersIn: "0123456789.,")
+        let filtered = localizedPrice.unicodeScalars.filter { allowed.contains($0) }
+        let result = String(String.UnicodeScalarView(filtered))
+        return result.isEmpty ? localizedPrice : result
     }
 
     func makePurchase(product: ApphudProduct, completion: @escaping(Bool, String?) -> Void) {
@@ -208,7 +406,12 @@ final class PurchaseManager: ObservableObject {
         purchaseError = nil
         
         Task { @MainActor in
-            let result = await Apphud.fallbackPurchase(product: product)
+            let result: Bool
+            if AppFeatures.useAdaptyCatalog {
+                result = await makeAdaptyPurchase(productId: product.productId)
+            } else {
+                result = await Apphud.fallbackPurchase(product: product)
+            }
             
             if result {
                 logger.info("PurchaseManager: Purchase successful for product \(product.productId)")
@@ -241,7 +444,9 @@ final class PurchaseManager: ObservableObject {
                     }
                 }
                 
-                self.isSubscribed = Apphud.hasPremiumAccess()
+                if !AppFeatures.useAdaptyCatalog {
+                    self.isSubscribed = Apphud.hasPremiumAccess()
+                }
                 self.purchaseState = .ready
                 self.purchaseError = nil
                 completion(true, nil)
@@ -253,6 +458,42 @@ final class PurchaseManager: ObservableObject {
                 completion(false, errorMsg)
             }
         }
+    }
+
+    private func makeAdaptyPurchase(productId: String) async -> Bool {
+        #if canImport(Adapty)
+        guard let adaptyProduct = AdaptyCatalogCache.shared.product(for: productId) else {
+            let errorMsg = "Adapty product is not available."
+            purchaseError = errorMsg
+            logger.error("PurchaseManager: \(errorMsg) id=\(productId)")
+            return false
+        }
+        do {
+            let purchaseResult = try await Adapty.makePurchase(product: adaptyProduct)
+            let raw = String(describing: purchaseResult).lowercased()
+            if raw.contains("cancel") {
+                purchaseError = "Purchase was cancelled."
+                logger.info("PurchaseManager: Adapty purchase cancelled for \(productId)")
+                return false
+            }
+            if raw.contains("pending") {
+                purchaseError = "Purchase is pending."
+                logger.info("PurchaseManager: Adapty purchase pending for \(productId)")
+                return false
+            }
+            return true
+        } catch {
+            let errorMsg = "Adapty purchase failed: \(error.localizedDescription)"
+            purchaseError = errorMsg
+            logger.error("PurchaseManager: \(errorMsg)")
+            return false
+        }
+        #else
+        let errorMsg = "Adapty SDK is not integrated."
+        purchaseError = errorMsg
+        logger.error("PurchaseManager: \(errorMsg)")
+        return false
+        #endif
     }
     
     private func extractTokensCount(from productId: String) -> Int {
@@ -274,6 +515,12 @@ final class PurchaseManager: ObservableObject {
 
     func restorePurchase(completion: @escaping(Bool) -> Void) {
         logger.info("PurchaseManager: Starting restore purchases")
+        if AppFeatures.useAdaptyCatalog {
+            logger.info("PurchaseManager: Restore is disabled in Adapty mode")
+            failRestoreText = "Restore is unavailable in this mode"
+            completion(false)
+            return
+        }
         Apphud.restorePurchases { [weak self] subscriptions, purchases, error in
             DispatchQueue.main.async {
                 guard let self = self else { return }

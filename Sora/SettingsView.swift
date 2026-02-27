@@ -31,7 +31,7 @@ struct SettingsView: View {
     }
     
     private var shareActivityItems: [Any] {
-        let url = URL(string: "https://apps.apple.com/app/id6759724131")!
+        let url = URL(string: PolicyURL.appstoreLink)!
         return [url]
     }
     

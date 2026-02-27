@@ -7,12 +7,15 @@
 
 import SwiftUI
 import ApphudSDK
+#if canImport(Adapty)
+import Adapty
+#endif
 
 /// Ссылки для политик (открываются во внешнем браузере).
 enum PolicyURL {
     static let privacy = "https://docs.google.com/document/d/1dr3r46-fKTq5DRMSh1udUKOXxpNvB2BGG0iA2x78UCw/edit?usp=sharing"
     static let usageTerms = "https://docs.google.com/document/d/16W_53WdEkA8LYLgoqplKj1hVqfryZzDBIwjNgkV6D58/edit?usp=sharing"
-    static let appstoreLink = "https://apps.apple.com/us/app/velmira-ai-video-generator/id6759724131"
+    static let appstoreLink = "https://apps.apple.com/app/id\(AppConfig.appStoreId)"
     static let supportLink = "https://forms.gle/NPFjqanjYhaenH7J8"
     
 }
@@ -24,8 +27,14 @@ enum ApphudConfig {
     static let demoKey = "app_MJp2QdcqMLP5XCgB8pAjZAhzAs2nva"
     /// Старый ключ (ранее в SoraApp)
     static let legacyKey = "app_TZDsHNqKL7UkoaScjN6oyShxkzRX97"
-    /// Текущий ключ приложения — поменяйте на legacyKey при необходимости
-    static let currentKey = demoKey
+    /// Разделение окружений: DEBUG использует demo, RELEASE — legacy/prod.
+    static let currentKey: String = {
+        #if DEBUG
+        return demoKey
+        #else
+        return legacyKey
+        #endif
+    }()
 }
 
 @main
@@ -38,7 +47,14 @@ struct SoraApp: App {
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
 
     init() {
-        Apphud.start(apiKey: ApphudConfig.currentKey)
+        if !AppFeatures.useAdaptyCatalog {
+            Apphud.start(apiKey: ApphudConfig.currentKey)
+        }
+        #if canImport(Adapty)
+        // TODO(HYBRID-CATALOG): In Adapty mode, catalog/purchase/auth-id can use Adapty.
+        // Apphud remains in project for test/fallback scenarios.
+        Adapty.activate("public_live_GGpepz1O.4igqWNWiIYInaumrLc1G")
+        #endif
     }
 
     var body: some Scene {

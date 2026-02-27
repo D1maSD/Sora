@@ -200,7 +200,7 @@
           "codeOffers" : [
 
           ],
-          "displayPrice" : "39.99",
+          "displayPrice" : "49.99",
           "familyShareable" : false,
           "groupNumber" : 1,
           "internalID" : "D5613602",
@@ -212,9 +212,9 @@
               "locale" : "en_US"
             }
           ],
-          "productID" : "yearly_39.99_nottrial",
+          "productID" : "yearly_49.99_nottrial",
           "recurringSubscriptionPeriod" : "P1Y",
-          "referenceName" : "yearly 39.99",
+          "referenceName" : "yearly 49.99",
           "subscriptionGroupID" : "9CC935E6",
           "type" : "RecurringSubscription",
           "winbackOffers" : [

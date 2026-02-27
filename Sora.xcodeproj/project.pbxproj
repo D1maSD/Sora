@@ -9,6 +9,10 @@
 /* Begin PBXBuildFile section */
 		185947432F4248B200AC8438 /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 185947422F4248B200AC8438 /* Lottie */; };
 		18949B512F47AB3000FAAE0D /* ApphudSDK in Frameworks */ = {isa = PBXBuildFile; productRef = 18949B502F47AB3000FAAE0D /* ApphudSDK */; };
+		18B513282F51B33300535C78 /* Adapty in Frameworks */ = {isa = PBXBuildFile; productRef = 18B513272F51B33300535C78 /* Adapty */; };
+		18B5132A2F51B33300535C78 /* AdaptyDeveloperTools in Frameworks */ = {isa = PBXBuildFile; productRef = 18B513292F51B33300535C78 /* AdaptyDeveloperTools */; };
+		18B5132C2F51B33300535C78 /* AdaptyLogger in Frameworks */ = {isa = PBXBuildFile; productRef = 18B5132B2F51B33300535C78 /* AdaptyLogger */; };
+		18B5132E2F51B33300535C78 /* AdaptyPlugin in Frameworks */ = {isa = PBXBuildFile; productRef = 18B5132D2F51B33300535C78 /* AdaptyPlugin */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -30,6 +34,10 @@
 			files = (
 				185947432F4248B200AC8438 /* Lottie in Frameworks */,
 				18949B512F47AB3000FAAE0D /* ApphudSDK in Frameworks */,
+				18B5132E2F51B33300535C78 /* AdaptyPlugin in Frameworks */,
+				18B5132A2F51B33300535C78 /* AdaptyDeveloperTools in Frameworks */,
+				18B5132C2F51B33300535C78 /* AdaptyLogger in Frameworks */,
+				18B513282F51B33300535C78 /* Adapty in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -74,6 +82,10 @@
 			packageProductDependencies = (
 				185947422F4248B200AC8438 /* Lottie */,
 				18949B502F47AB3000FAAE0D /* ApphudSDK */,
+				18B513272F51B33300535C78 /* Adapty */,
+				18B513292F51B33300535C78 /* AdaptyDeveloperTools */,
+				18B5132B2F51B33300535C78 /* AdaptyLogger */,
+				18B5132D2F51B33300535C78 /* AdaptyPlugin */,
 			);
 			productName = Sora;
 			productReference = 18A3F1E02F3DDC2B00EEB0D5 /* Sora.app */;
@@ -106,6 +118,7 @@
 			packageReferences = (
 				185947412F4248B200AC8438 /* XCRemoteSwiftPackageReference "lottie-ios" */,
 				18949B4F2F47AB3000FAAE0D /* XCRemoteSwiftPackageReference "ApphudSDK" */,
+				18B513262F51B33300535C78 /* XCRemoteSwiftPackageReference "AdaptySDK-iOS" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 18A3F1E12F3DDC2B00EEB0D5 /* Products */;
@@ -279,7 +292,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = test.Sora;
+				PRODUCT_BUNDLE_IDENTIFIER = com.zaf.5246sora;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -309,7 +322,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = test.Sora;
+				PRODUCT_BUNDLE_IDENTIFIER = com.zaf.5246sora;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -357,6 +370,14 @@
 				minimumVersion = 3.6.2;
 			};
 		};
+		18B513262F51B33300535C78 /* XCRemoteSwiftPackageReference "AdaptySDK-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/adaptyteam/AdaptySDK-iOS";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 3.15.1;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -369,6 +390,26 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 18949B4F2F47AB3000FAAE0D /* XCRemoteSwiftPackageReference "ApphudSDK" */;
 			productName = ApphudSDK;
+		};
+		18B513272F51B33300535C78 /* Adapty */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 18B513262F51B33300535C78 /* XCRemoteSwiftPackageReference "AdaptySDK-iOS" */;
+			productName = Adapty;
+		};
+		18B513292F51B33300535C78 /* AdaptyDeveloperTools */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 18B513262F51B33300535C78 /* XCRemoteSwiftPackageReference "AdaptySDK-iOS" */;
+			productName = AdaptyDeveloperTools;
+		};
+		18B5132B2F51B33300535C78 /* AdaptyLogger */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 18B513262F51B33300535C78 /* XCRemoteSwiftPackageReference "AdaptySDK-iOS" */;
+			productName = AdaptyLogger;
+		};
+		18B5132D2F51B33300535C78 /* AdaptyPlugin */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 18B513262F51B33300535C78 /* XCRemoteSwiftPackageReference "AdaptySDK-iOS" */;
+			productName = AdaptyPlugin;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -72,7 +72,7 @@ struct RatingPromptView: View {
                     .buttonStyle(.plain)
 
                     Button(action: {
-                        if let url = URL(string: "https://apps.apple.com/us/app/velmira-ai-video-generator/id6759724131") {
+                        if let url = URL(string: PolicyURL.appstoreLink) {
                             UIApplication.shared.open(url)
                         }
                         RatingPromptService.shared.markRated()

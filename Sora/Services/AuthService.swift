@@ -7,6 +7,9 @@
 
 import Foundation
 import ApphudSDK
+#if canImport(Adapty)
+import Adapty
+#endif
 
 final class AuthService {
     static let shared = AuthService()
@@ -15,6 +18,12 @@ final class AuthService {
     private let api = APIClient.shared
     
     private init() {}
+
+    private enum AuthSource: String {
+        case adapty = "Adapty"
+        case apphud = "Apphud"
+        case none = "None"
+    }
     
     /// Запускать на Splash до перехода на Onboarding/ContentView.
     /// Не блокирует UI — выполняется в Task.
@@ -31,15 +40,18 @@ final class AuthService {
     
     /// Регистрация: apphud_id → POST /api/users → сохраняем user_id → authorize
     private func register() async {
-        let apphudId = await MainActor.run { Apphud.userID() }
-        guard !apphudId.isEmpty else {
-            print("[AuthService] Apphud.userID() is empty")
+        let (externalId, authSource) = await resolveExternalAuthId()
+        print("[AuthService] Auth source: \(authSource.rawValue)")
+        guard !externalId.isEmpty else {
+            print("[AuthService] External auth id is empty")
             return
         }
         do {
             let response: CreateUserResponse = try await api.post(
                 "/api/users",
-                body: CreateUserRequest(apphud_id: apphudId),
+                // Backend field name is currently apphud_id.
+                // In Adapty mode we pass Adapty profile/customer id into the same field.
+                body: CreateUserRequest(apphud_id: externalId),
                 useAuth: false
             )
             keychain.saveUserId(response.id)
@@ -54,6 +66,31 @@ final class AuthService {
         } catch {
             print("[AuthService] register error: \(error)")
         }
+    }
+
+    private func resolveExternalAuthId() async -> (String, AuthSource) {
+        if AppFeatures.useAdaptyCatalog {
+            #if canImport(Adapty)
+            do {
+                let profile = try await Adapty.getProfile()
+                let mirror = Mirror(reflecting: profile)
+                for key in ["profileId", "profileID", "customerUserId", "id"] {
+                    if let value = mirror.children.first(where: { $0.label == key })?.value as? String,
+                       !value.isEmpty {
+                        return (value, .adapty)
+                    }
+                }
+                print("[AuthService] Adapty profile fetched, but id field is empty")
+            } catch {
+                print("[AuthService] Failed to resolve Adapty auth id: \(error)")
+            }
+            #else
+            print("[AuthService] Adapty mode enabled, but Adapty SDK is unavailable")
+            #endif
+            return ("", .none)
+        }
+        let apphudId = await MainActor.run { Apphud.userID() }
+        return (apphudId, apphudId.isEmpty ? .none : .apphud)
     }
     
     /// Авторизация: POST /api/users/authorize → сохраняем access_token
